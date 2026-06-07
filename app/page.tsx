@@ -40,7 +40,12 @@ export default function Dashboard() {
   const loadHealth = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/health?days=${period}`);
+      const token = localStorage.getItem('hp_access_token');
+      const refresh = localStorage.getItem('hp_refresh_token');
+      const params = new URLSearchParams({ days: String(period) });
+      if (token) params.set('access_token', token);
+      if (refresh) params.set('refresh_token', refresh);
+      const res = await fetch(`/api/health?${params}`);
       const json = await res.json();
       setMetrics(json.data ?? []);
       setIsMock(json.mock ?? false);
@@ -57,6 +62,18 @@ export default function Dashboard() {
     setMealEntries(json.entries ?? []);
     setIsMealMock(json.mock ?? false);
     setSelectedDay(json.daily?.[json.daily.length - 1] ?? null);
+  }, []);
+
+  // Read OAuth tokens from URL params (Safari ITP workaround) and save to localStorage
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('hp_token');
+    const refresh = params.get('hp_refresh');
+    if (token) {
+      localStorage.setItem('hp_access_token', token);
+      localStorage.setItem('hp_refresh_token', refresh ?? '');
+      window.history.replaceState({}, '', '/');
+    }
   }, []);
 
   useEffect(() => { loadHealth(); }, [loadHealth]);

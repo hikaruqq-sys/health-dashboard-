@@ -14,24 +14,13 @@ export async function GET(req: NextRequest) {
 
   try {
     const tokens = await exchangeCodeForToken(code);
-    const isProd = process.env.NODE_ENV === 'production';
-    const res = NextResponse.redirect(new URL('/', req.url));
-
-    res.cookies.set('hp_access_token', tokens.access_token, {
-      httpOnly: true,
-      secure: isProd,
-      maxAge: tokens.expires_in,
-      sameSite: 'lax',
-      path: '/',
-    });
-    res.cookies.set('hp_refresh_token', tokens.refresh_token, {
-      httpOnly: true,
-      secure: isProd,
-      maxAge: 60 * 60 * 24 * 7,
-      sameSite: 'lax',
-      path: '/',
-    });
-    return res;
+    // Pass tokens via URL params so frontend can store in localStorage
+    // (Safari ITP blocks cookies set during cross-site redirects)
+    const redirectUrl = new URL('/', req.url);
+    redirectUrl.searchParams.set('hp_token', tokens.access_token);
+    redirectUrl.searchParams.set('hp_refresh', tokens.refresh_token);
+    redirectUrl.searchParams.set('hp_expires', String(tokens.expires_in));
+    return NextResponse.redirect(redirectUrl);
   } catch (e) {
     console.error('Auth callback error:', e);
     return NextResponse.redirect(new URL('/?error=auth_failed', req.url));
