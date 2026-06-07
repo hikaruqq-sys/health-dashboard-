@@ -269,7 +269,7 @@ function BodyTab({ metrics, nutrition, latest, prev, trend, isMock }: {
   return (
     <div className="flex flex-col gap-4">
       {/* Tanita connect banner */}
-      {isMock && (
+      {(isMock || metrics.length === 0) && (
         <div className="rounded-2xl border p-4 flex items-center justify-between gap-3"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
           <div>
