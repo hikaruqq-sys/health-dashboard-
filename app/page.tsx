@@ -186,7 +186,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="flex items-center justify-center h-48" style={{ color: 'var(--text-muted)' }}>読み込み中...</div>
           ) : activeTab === 'body' ? (
-            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} />
+            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} debugInfo={debugInfo} />
           ) : (
             <NutritionTab
               nutrition={nutrition}
@@ -246,7 +246,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="flex items-center justify-center h-48" style={{ color: 'var(--text-muted)' }}>読み込み中...</div>
           ) : activeTab === 'body' ? (
-            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} />
+            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} debugInfo={debugInfo} />
           ) : (
             <NutritionTab
               nutrition={nutrition}
@@ -281,13 +281,14 @@ export default function Dashboard() {
 }
 
 /* ── Body composition tab ── */
-function BodyTab({ metrics, nutrition, latest, prev, trend, isMock }: {
+function BodyTab({ metrics, nutrition, latest, prev, trend, isMock, debugInfo }: {
   metrics: BodyMetric[];
   nutrition: DailyNutrition[];
   latest: BodyMetric | undefined;
   prev: BodyMetric | undefined;
   trend: (key: keyof BodyMetric) => 'up' | 'down' | 'flat';
   isMock: boolean;
+  debugInfo?: string;
 }) {
   return (
     <div className="flex flex-col gap-4">
