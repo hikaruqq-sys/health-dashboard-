@@ -28,7 +28,10 @@ export async function exchangeCodeForToken(code: string): Promise<{
       grant_type: 'authorization_code',
     }),
   });
-  if (!res.ok) throw new Error('Token exchange failed');
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Token exchange failed: ${res.status} ${body}`);
+  }
   return res.json();
 }
 
