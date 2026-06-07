@@ -163,7 +163,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="flex items-center justify-center h-48" style={{ color: 'var(--text-muted)' }}>読み込み中...</div>
           ) : activeTab === 'body' ? (
-            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} />
+            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} />
           ) : (
             <NutritionTab
               nutrition={nutrition}
@@ -223,7 +223,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="flex items-center justify-center h-48" style={{ color: 'var(--text-muted)' }}>読み込み中...</div>
           ) : activeTab === 'body' ? (
-            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} />
+            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} />
           ) : (
             <NutritionTab
               nutrition={nutrition}
@@ -258,15 +258,33 @@ export default function Dashboard() {
 }
 
 /* ── Body composition tab ── */
-function BodyTab({ metrics, nutrition, latest, prev, trend }: {
+function BodyTab({ metrics, nutrition, latest, prev, trend, isMock }: {
   metrics: BodyMetric[];
   nutrition: DailyNutrition[];
   latest: BodyMetric | undefined;
   prev: BodyMetric | undefined;
   trend: (key: keyof BodyMetric) => 'up' | 'down' | 'flat';
+  isMock: boolean;
 }) {
   return (
     <div className="flex flex-col gap-4">
+      {/* Tanita connect banner */}
+      {isMock && (
+        <div className="rounded-2xl border p-4 flex items-center justify-between gap-3"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+          <div>
+            <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>⚖️ タニタ体組成計を連携する</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>現在はデモデータを表示中。連携すると実際の計測データが同期されます。</p>
+          </div>
+          <a
+            href="/api/auth/start"
+            className="text-xs px-4 py-2 rounded-full font-medium whitespace-nowrap flex-shrink-0"
+            style={{ background: 'var(--accent)', color: '#fff' }}
+          >
+            連携する
+          </a>
+        </div>
+      )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <MetricCard label="体重" value={latest?.weight} unit="kg" trend={trend('weight')} trendGood="down"
           sub={prev?.weight ? `前回比 ${((latest?.weight ?? 0) - prev.weight).toFixed(1)} kg` : undefined} />
