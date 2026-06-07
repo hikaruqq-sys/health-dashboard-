@@ -36,6 +36,7 @@ export default function Dashboard() {
   const [syncedAt, setSyncedAt] = useState<Date | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('body');
   const [selectedDay, setSelectedDay] = useState<DailyNutrition | null>(null);
+  const [debugInfo, setDebugInfo] = useState<string>('');
 
   const loadHealth = useCallback(async () => {
     setLoading(true);
@@ -47,6 +48,7 @@ export default function Dashboard() {
       if (refresh) params.set('refresh_token', refresh);
       const res = await fetch(`/api/health?${params}`);
       const json = await res.json();
+      setDebugInfo(prev => prev + ` | API: ${JSON.stringify(json).slice(0, 80)}`);
       setMetrics(json.data ?? []);
       setIsMock(json.mock ?? false);
       setSyncedAt(new Date());
@@ -73,6 +75,10 @@ export default function Dashboard() {
       localStorage.setItem('hp_access_token', token);
       localStorage.setItem('hp_refresh_token', refresh ?? '');
       window.history.replaceState({}, '', '/');
+      setDebugInfo(`✅ トークン保存済み (${token.slice(0, 10)}...)`);
+    } else {
+      const stored = localStorage.getItem('hp_access_token');
+      setDebugInfo(stored ? `💾 localStorage: ${stored.slice(0, 10)}...` : '❌ トークンなし');
     }
   }, []);
 
@@ -285,6 +291,13 @@ function BodyTab({ metrics, nutrition, latest, prev, trend, isMock }: {
 }) {
   return (
     <div className="flex flex-col gap-4">
+      {/* Debug info */}
+      {debugInfo && (
+        <div className="rounded-xl p-3 text-xs font-mono break-all" style={{ background: 'var(--bg-card2)', color: 'var(--text-muted)' }}>
+          🔍 {debugInfo}
+        </div>
+      )}
+
       {/* Tanita connect banner */}
       {(isMock || metrics.length === 0) && (
         <div className="rounded-2xl border p-4 flex items-center justify-between gap-3"
