@@ -304,7 +304,7 @@ function NutritionTab({ nutrition, todayNutrition, selectedDay, isMealMock, metr
       <NutritionChart data={nutrition} />
 
       {/* CSV upload - primary import method */}
-      <Card title="iPhoneから食事データをインポート" badge={isMealMock ? 'デモデータ' : undefined}>
+      <Card title="📱 iPhoneから食事データをインポート" badge={isMealMock ? 'デモデータ' : undefined}>
         <CSVUpload onLoaded={onMealLoaded} />
         <div className="text-xs rounded-xl p-3 mt-1" style={{ background: 'var(--bg-card2)', color: 'var(--text-muted)' }}>
           <p className="font-medium mb-1" style={{ color: 'var(--text-sub)' }}>📱 Streaksのエクスポート手順</p>
