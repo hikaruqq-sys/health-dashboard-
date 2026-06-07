@@ -8,7 +8,6 @@ import NutritionChart from '@/components/NutritionChart';
 import MacroBar from '@/components/MacroBar';
 import MealLog from '@/components/MealLog';
 import CSVUpload from '@/components/CSVUpload';
-import MealInput from '@/components/MealInput';
 import AIAdvicePanel from '@/components/AIAdvicePanel';
 import { useTheme } from '@/components/ThemeProvider';
 import { BodyMetric, DailyNutrition, MealEntry } from '@/types';
@@ -303,16 +302,18 @@ function NutritionTab({ nutrition, todayNutrition, selectedDay, isMealMock, metr
         />
       )}
       <NutritionChart data={nutrition} />
-      <MealInput onLoaded={onMealLoaded} />
 
-      {/* CSV upload */}
-      <Card title="CSVインポート" badge={isMealMock ? 'デモデータ' : undefined}>
+      {/* CSV upload - primary import method */}
+      <Card title="iPhoneから食事データをインポート" badge={isMealMock ? 'デモデータ' : undefined}>
         <CSVUpload onLoaded={onMealLoaded} />
         <div className="text-xs rounded-xl p-3 mt-1" style={{ background: 'var(--bg-card2)', color: 'var(--text-muted)' }}>
-          <p className="font-medium mb-1" style={{ color: 'var(--text-sub)' }}>Streaks CSVフォーマット対応</p>
-          <code className="block font-mono">2026/02/01 18:33, 夜ご飯, ハンバーグ定食,</code>
-          <code className="block font-mono">2026/02/02 7:17, 朝ご飯, オートミール, コーヒー</code>
-          <p className="mt-1">栄養情報がない場合はAIが自動推定します</p>
+          <p className="font-medium mb-1" style={{ color: 'var(--text-sub)' }}>📱 Streaksのエクスポート手順</p>
+          <ol className="list-decimal ml-4 space-y-0.5">
+            <li>Streaksアプリ → 該当ログを開く</li>
+            <li>右上メニュー → 「Export」→「CSV」</li>
+            <li>書き出したファイルをここにアップロード</li>
+          </ol>
+          <p className="mt-2">✨ 栄養情報がない場合はAIが自動推定します</p>
         </div>
       </Card>
 
