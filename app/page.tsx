@@ -292,12 +292,10 @@ function BodyTab({ metrics, nutrition, latest, prev, trend, isMock, debugInfo }:
 }) {
   return (
     <div className="flex flex-col gap-4">
-      {/* Debug info */}
-      {debugInfo && (
-        <div className="rounded-xl p-3 text-xs font-mono break-all" style={{ background: 'var(--bg-card2)', color: 'var(--text-muted)' }}>
-          🔍 {debugInfo}
-        </div>
-      )}
+      {/* Debug info - always visible */}
+      <div className="rounded-xl p-3 text-xs font-mono break-all" style={{ background: '#1a1a2e', color: '#00ff88', border: '1px solid #00ff88' }}>
+        🔍 DEBUG v3: {debugInfo || '(useEffect未実行)'}
+      </div>
 
       {/* Tanita connect banner */}
       {(isMock || metrics.length === 0) && (
