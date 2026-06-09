@@ -56,6 +56,22 @@ export default function Dashboard() {
   }, [period]);
 
   const loadMeals = useCallback(async () => {
+    // Restore previously imported meal data from localStorage first
+    try {
+      const stored = localStorage.getItem('meal_nutrition');
+      if (stored) {
+        const parsed: DailyNutrition[] = JSON.parse(stored);
+        if (parsed.length > 0) {
+          setNutrition(parsed);
+          setIsMealMock(false);
+          setSelectedDay(parsed[parsed.length - 1]);
+          return;
+        }
+      }
+    } catch {
+      // ignore corrupt storage and fall through to mock
+    }
+    // No saved data yet → show mock sample from server
     const res = await fetch('/api/meals?days=14');
     const json = await res.json();
     setNutrition(json.daily ?? []);
@@ -95,9 +111,17 @@ export default function Dashboard() {
   const onMealLoaded = (entries: MealEntry[], daily: DailyNutrition[]) => {
     setMealEntries((prev) => [...prev, ...entries]);
     setNutrition((prev) => {
-      const map = new Map(prev.map((d) => [d.date, d]));
-      daily.forEach((d) => map.set(d.date, d));
-      return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+      // If we're currently showing mock sample data, replace it; otherwise merge
+      const base = isMealMock ? [] : prev;
+      const map = new Map(base.map((d) => [d.date, d]));
+      daily.forEach((d) => map.set(d.date, d)); // newer import wins per date
+      const merged = Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+      try {
+        localStorage.setItem('meal_nutrition', JSON.stringify(merged));
+      } catch {
+        // storage full / unavailable — keep in-memory at least
+      }
+      return merged;
     });
     setIsMealMock(false);
     setSelectedDay(daily[daily.length - 1] ?? null);
