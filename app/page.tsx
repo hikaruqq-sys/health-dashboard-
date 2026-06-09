@@ -274,6 +274,11 @@ export default function Dashboard() {
   );
 }
 
+/* Returns true if any record has a value for the given metric key */
+function has(metrics: BodyMetric[], key: keyof BodyMetric): boolean {
+  return metrics.some((m) => m[key] != null);
+}
+
 /* ── Body composition tab ── */
 function BodyTab({ metrics, nutrition, latest, prev, trend, isMock }: {
   metrics: BodyMetric[];
@@ -303,11 +308,19 @@ function BodyTab({ metrics, nutrition, latest, prev, trend, isMock }: {
         </div>
       )}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <MetricCard label="体重" value={latest?.weight} unit="kg" trend={trend('weight')} trendGood="down"
-          sub={prev?.weight ? `前回比 ${((latest?.weight ?? 0) - prev.weight).toFixed(1)} kg` : undefined} />
-        <MetricCard label="体脂肪率" value={latest?.bodyFat} unit="%" trend={trend('bodyFat')} trendGood="down" />
-        <MetricCard label="筋肉量" value={latest?.muscleMass} unit="kg" trend={trend('muscleMass')} trendGood="up" />
-        <MetricCard label="基礎代謝" value={latest?.bmr} unit="kcal" trend={trend('bmr')} trendGood="up" />
+        {has(metrics, 'weight') && (
+          <MetricCard label="体重" value={latest?.weight} unit="kg" trend={trend('weight')} trendGood="down"
+            sub={prev?.weight ? `前回比 ${((latest?.weight ?? 0) - prev.weight).toFixed(1)} kg` : undefined} />
+        )}
+        {has(metrics, 'bodyFat') && (
+          <MetricCard label="体脂肪率" value={latest?.bodyFat} unit="%" trend={trend('bodyFat')} trendGood="down" />
+        )}
+        {has(metrics, 'muscleMass') && (
+          <MetricCard label="筋肉量" value={latest?.muscleMass} unit="kg" trend={trend('muscleMass')} trendGood="up" />
+        )}
+        {has(metrics, 'bmr') && (
+          <MetricCard label="基礎代謝" value={latest?.bmr} unit="kcal" trend={trend('bmr')} trendGood="up" />
+        )}
       </div>
       <WeightChart data={metrics} />
       <BodyChart data={metrics} />
