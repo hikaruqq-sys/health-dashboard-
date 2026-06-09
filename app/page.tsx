@@ -36,7 +36,6 @@ export default function Dashboard() {
   const [syncedAt, setSyncedAt] = useState<Date | null>(null);
   const [activeTab, setActiveTab] = useState<Tab>('body');
   const [selectedDay, setSelectedDay] = useState<DailyNutrition | null>(null);
-  const [debugInfo, setDebugInfo] = useState<string>('');
 
   const loadHealth = useCallback(async () => {
     setLoading(true);
@@ -48,7 +47,6 @@ export default function Dashboard() {
       if (refresh) params.set('refresh_token', refresh);
       const res = await fetch(`/api/health?${params}`);
       const json = await res.json();
-      setDebugInfo(prev => prev + ` | API: ${JSON.stringify(json).slice(0, 80)}`);
       setMetrics(json.data ?? []);
       setIsMock(json.mock ?? false);
       setSyncedAt(new Date());
@@ -75,10 +73,6 @@ export default function Dashboard() {
       localStorage.setItem('hp_access_token', token);
       localStorage.setItem('hp_refresh_token', refresh ?? '');
       window.history.replaceState({}, '', '/');
-      setDebugInfo(`✅ トークン保存済み (${token.slice(0, 10)}...)`);
-    } else {
-      const stored = localStorage.getItem('hp_access_token');
-      setDebugInfo(stored ? `💾 localStorage: ${stored.slice(0, 10)}...` : '❌ トークンなし');
     }
   }, []);
 
@@ -186,7 +180,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="flex items-center justify-center h-48" style={{ color: 'var(--text-muted)' }}>読み込み中...</div>
           ) : activeTab === 'body' ? (
-            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} debugInfo={debugInfo} />
+            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} />
           ) : (
             <NutritionTab
               nutrition={nutrition}
@@ -246,7 +240,7 @@ export default function Dashboard() {
           {loading ? (
             <div className="flex items-center justify-center h-48" style={{ color: 'var(--text-muted)' }}>読み込み中...</div>
           ) : activeTab === 'body' ? (
-            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} debugInfo={debugInfo} />
+            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} />
           ) : (
             <NutritionTab
               nutrition={nutrition}
@@ -281,22 +275,16 @@ export default function Dashboard() {
 }
 
 /* ── Body composition tab ── */
-function BodyTab({ metrics, nutrition, latest, prev, trend, isMock, debugInfo }: {
+function BodyTab({ metrics, nutrition, latest, prev, trend, isMock }: {
   metrics: BodyMetric[];
   nutrition: DailyNutrition[];
   latest: BodyMetric | undefined;
   prev: BodyMetric | undefined;
   trend: (key: keyof BodyMetric) => 'up' | 'down' | 'flat';
   isMock: boolean;
-  debugInfo?: string;
 }) {
   return (
     <div className="flex flex-col gap-4">
-      {/* Debug info - always visible */}
-      <div className="rounded-xl p-3 text-xs font-mono break-all" style={{ background: '#1a1a2e', color: '#00ff88', border: '1px solid #00ff88' }}>
-        🔍 DEBUG v3: {debugInfo || '(useEffect未実行)'}
-      </div>
-
       {/* Tanita connect banner */}
       {(isMock || metrics.length === 0) && (
         <div className="rounded-2xl border p-4 flex items-center justify-between gap-3"

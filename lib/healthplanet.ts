@@ -54,13 +54,14 @@ export async function refreshAccessToken(refreshToken: string): Promise<{
   return res.json();
 }
 
-// TAG IDs from Health Planet API docs
+// TAG IDs from Health Planet innerscan API docs
+// 6021:体重 6022:体脂肪率 6023:筋肉量 6027:基礎代謝量 6028:体内年齢
 const TAG_MAP: Record<string, keyof BodyMetric> = {
   '6021': 'weight',
   '6022': 'bodyFat',
   '6023': 'muscleMass',
-  '6024': 'bmr',
-  '6035': 'bodyAge',
+  '6027': 'bmr',
+  '6028': 'bodyAge',
 };
 
 export async function fetchHealthData(
@@ -75,8 +76,11 @@ export async function fetchHealthData(
     to,
     tag: Object.keys(TAG_MAP).join(','),
   });
-  const res = await fetch(`${HP_BASE}/status.json?${params}`);
-  if (!res.ok) throw new Error('Health Planet API error');
+  const res = await fetch(`${HP_BASE}/status/innerscan.json?${params}`);
+  if (!res.ok) {
+    const body = await res.text();
+    throw new Error(`Health Planet API error: ${res.status} ${body}`);
+  }
   const json = await res.json();
 
   // Group by date
@@ -91,6 +95,29 @@ export async function fetchHealthData(
   }
 
   return Array.from(map.values()).sort((a, b) => a.date.localeCompare(b.date));
+}
+
+// Health Planet limits each request to 3 months, so split larger ranges
+// into <=90-day windows and merge the results.
+export async function fetchHealthDataRange(
+  accessToken: string,
+  fromDate: Date,
+  toDate: Date,
+): Promise<BodyMetric[]> {
+  const fmt = (d: Date) => d.toISOString().replace(/[-T:.Z]/g, '').slice(0, 14);
+  const merged = new Map<string, BodyMetric>();
+  const cursor = new Date(fromDate);
+
+  while (cursor < toDate) {
+    const windowEnd = new Date(cursor);
+    windowEnd.setDate(windowEnd.getDate() + 88);
+    const chunkTo = windowEnd < toDate ? windowEnd : toDate;
+    const chunk = await fetchHealthData(accessToken, fmt(cursor), fmt(chunkTo));
+    for (const m of chunk) merged.set(m.date, m);
+    cursor.setDate(cursor.getDate() + 89);
+  }
+
+  return Array.from(merged.values()).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 // Mock data for development (when API keys are not configured)

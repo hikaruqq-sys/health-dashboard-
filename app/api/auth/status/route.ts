@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchHealthData } from '@/lib/healthplanet';
+import { fetchHealthDataRange } from '@/lib/healthplanet';
 
 export async function GET(req: NextRequest) {
   const accessToken = req.cookies.get('hp_access_token')?.value;
@@ -18,8 +18,7 @@ export async function GET(req: NextRequest) {
     const to = new Date();
     const from = new Date();
     from.setDate(from.getDate() - 90);
-    const fmt = (d: Date) => d.toISOString().replace(/[-T:.Z]/g, '').slice(0, 14);
-    const data = await fetchHealthData(accessToken, fmt(from), fmt(to));
+    const data = await fetchHealthDataRange(accessToken, from, to);
     return NextResponse.json({
       authenticated: true,
       dataCount: data.length,

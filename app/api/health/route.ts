@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchHealthData, refreshAccessToken, getMockData } from '@/lib/healthplanet';
+import { fetchHealthDataRange, refreshAccessToken, getMockData } from '@/lib/healthplanet';
 
 export async function GET(req: NextRequest) {
   const useMock =
@@ -36,10 +36,9 @@ export async function GET(req: NextRequest) {
   const to = new Date();
   const from = new Date();
   from.setDate(from.getDate() - days);
-  const fmt = (d: Date) => d.toISOString().replace(/[-T:.Z]/g, '').slice(0, 14);
 
   try {
-    const data = await fetchHealthData(accessToken, fmt(from), fmt(to));
+    const data = await fetchHealthDataRange(accessToken, from, to);
     return NextResponse.json({ data, mock: false });
   } catch (e) {
     console.error('Health fetch error:', e);
