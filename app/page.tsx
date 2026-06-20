@@ -373,7 +373,17 @@ function NutritionTab({ nutrition, todayNutrition, selectedDay, isMealMock, metr
           carbs={todayNutrition.totalCarbs}
         />
       )}
-      <NutritionChart data={nutrition} />
+      <NutritionChart data={nutrition} selectedDate={selectedDay?.date} onSelectDay={setSelectedDay} />
+
+      {/* Selected day meals (also shown lower) */}
+      {selectedDay && (
+        <div className="rounded-2xl border p-5 flex flex-col gap-3" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+          <h2 className="text-sm font-semibold" style={{ color: 'var(--text-sub)' }}>
+            🍽 {selectedDay.date} の食事（{Math.round(selectedDay.totalCalories)} kcal）
+          </h2>
+          <MealLog day={selectedDay} />
+        </div>
+      )}
 
       {/* CSV upload - primary import method */}
       <Card title="📱 iPhoneから食事データをインポート" badge={isMealMock ? 'デモデータ' : undefined}>
@@ -409,7 +419,6 @@ function NutritionTab({ nutrition, todayNutrition, selectedDay, isMealMock, metr
         </div>
       )}
 
-      {selectedDay && <MealLog day={selectedDay} />}
       <AIAdvicePanel metrics={metrics} nutrition={nutrition} />
     </div>
   );
