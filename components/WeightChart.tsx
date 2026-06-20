@@ -23,6 +23,8 @@ export default function WeightChart({ data }: { data: BodyMetric[] }) {
           <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} domain={['dataMin - 1', 'dataMax + 1']} />
           <Tooltip
             contentStyle={{ borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)' }}
+            labelStyle={{ color: 'var(--text)' }}
+            itemStyle={{ color: 'var(--text)' }}
             formatter={(v) => [`${v} kg`, '体重']}
           />
           {avg && (

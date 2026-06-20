@@ -44,6 +44,8 @@ export default function NutritionChart({
           <Tooltip
             cursor={{ fill: 'var(--border)', opacity: 0.3 }}
             contentStyle={{ borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)' }}
+            labelStyle={{ color: 'var(--text)' }}
+            itemStyle={{ color: 'var(--text)' }}
             formatter={(v) => [`${Math.round(Number(v))} kcal`, 'カロリー']}
           />
           <ReferenceLine y={calorieGoal} stroke="#f59e0b" strokeDasharray="4 4"

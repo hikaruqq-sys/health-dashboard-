@@ -20,7 +20,7 @@ export default function BodyChart({ data }: { data: BodyMetric[] }) {
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} interval="preserveStartEnd" />
           <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
-          <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)' }} />
+          <Tooltip contentStyle={{ borderRadius: 12, border: '1px solid var(--border)', background: 'var(--bg-card)', color: 'var(--text)' }} labelStyle={{ color: 'var(--text)' }} itemStyle={{ color: 'var(--text)' }} />
           <Legend wrapperStyle={{ fontSize: 12, color: 'var(--text-sub)' }} />
           <Line type="monotone" dataKey="bodyFat" name="体脂肪率 (%)" stroke="#f43f5e" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />
           {hasMuscle && <Line type="monotone" dataKey="muscleMass" name="筋肉量 (kg)" stroke="#10b981" strokeWidth={2} dot={false} activeDot={{ r: 4 }} />}
