@@ -8,7 +8,7 @@ function getClient() {
 async function chat(prompt: string): Promise<string> {
   const client = getClient();
   const res = await client.chat.completions.create({
-    model: 'llama-3.3-70b-versatile',
+    model: 'meta-llama/llama-4-scout-17b-16e-instruct',
     messages: [{ role: 'user', content: prompt }],
     max_tokens: 1024,
   });
