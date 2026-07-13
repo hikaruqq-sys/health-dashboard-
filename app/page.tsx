@@ -95,6 +95,28 @@ export default function Dashboard() {
   useEffect(() => { loadHealth(); }, [loadHealth]);
   useEffect(() => { loadMeals(); }, [loadMeals]);
 
+  // Push latest real data to the server so the Scriptable widget can read it
+  useEffect(() => {
+    const weight = isMock
+      ? []
+      : metrics.filter((m) => m.weight != null).map((m) => ({ date: m.date, weight: m.weight as number }));
+    const pfc = isMealMock
+      ? []
+      : nutrition.map((d) => ({
+          date: d.date,
+          protein: Math.round(d.totalProtein),
+          fat: Math.round(d.totalFat),
+          carbs: Math.round(d.totalCarbs),
+          calories: Math.round(d.totalCalories),
+        }));
+    if (weight.length === 0 && pfc.length === 0) return;
+    fetch('/api/widget-sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ weight, pfc }),
+    }).catch(() => { /* best-effort sync */ });
+  }, [metrics, nutrition, isMock, isMealMock]);
+
   const latest = metrics[metrics.length - 1];
   const prev = metrics[metrics.length - 3];
 
