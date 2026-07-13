@@ -5,7 +5,7 @@
 //  設定: 下の SECRET を Vercel の WIDGET_SECRET と同じ値にする
 // ============================================================
 const API_BASE = "https://health-dashboard-dusky-xi.vercel.app";
-const SECRET = "PUT_YOUR_SECRET_HERE"; // ← Vercelの WIDGET_SECRET と一致させる
+const SECRET = "0a0b42d75ffabbd9acd1e5fa2fe80df0"; // Vercelの WIDGET_SECRET と一致
 
 // ---- データ取得 ----
 async function fetchData() {
