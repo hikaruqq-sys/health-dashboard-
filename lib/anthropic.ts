@@ -10,7 +10,9 @@ async function chat(prompt: string): Promise<string> {
   const res = await client.chat.completions.create({
     model: 'openai/gpt-oss-120b',
     messages: [{ role: 'user', content: prompt }],
-    max_tokens: 1024,
+    max_tokens: 4096,
+    // gpt-oss は推論モデル。reasoning に予算を使い切って content が空になるのを防ぐ
+    reasoning_effort: 'low',
   });
   return res.choices[0]?.message?.content ?? '';
 }
