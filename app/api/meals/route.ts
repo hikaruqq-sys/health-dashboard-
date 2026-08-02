@@ -30,22 +30,31 @@ export async function POST(req: NextRequest) {
       dateGroups.get(e.date)!.push(e);
     }
 
-    const estimatedEntries: typeof entries = [];
     const dates = Array.from(dateGroups.keys()).sort().slice(-30); // last 30 days
-    for (const date of dates) {
+
+    // 1日ずつ直列に待つと遅いので、同時実行数を絞って並列に推定する。
+    // （全同時だとGroqのレート制限に当たりやすいため CONCURRENCY で制限）
+    const CONCURRENCY = 6;
+    const estimateForDate = async (date: string) => {
       const dayFoods = dateGroups.get(date)!.map((e) => ({
         mealType: e.mealType,
         name: e.foodName,
       }));
       try {
-        const estimated = await estimateNutrition(dayFoods, date);
-        estimatedEntries.push(...estimated);
+        return await estimateNutrition(dayFoods, date);
       } catch {
-        // fallback: keep zeros
-        estimatedEntries.push(...dateGroups.get(date)!);
+        // fallback: keep original (zeros) rows for that day
+        return dateGroups.get(date)!;
       }
+    };
+
+    const results: (typeof entries)[] = [];
+    for (let i = 0; i < dates.length; i += CONCURRENCY) {
+      const chunk = dates.slice(i, i + CONCURRENCY);
+      const chunkResults = await Promise.all(chunk.map(estimateForDate));
+      results.push(...chunkResults);
     }
-    entries = estimatedEntries;
+    entries = results.flat();
   }
 
   const daily = groupByDay(entries);
