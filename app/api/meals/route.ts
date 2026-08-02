@@ -30,7 +30,19 @@ export async function POST(req: NextRequest) {
       dateGroups.get(e.date)!.push(e);
     }
 
-    const dates = Array.from(dateGroups.keys()).sort().slice(-30); // last 30 days
+    // クライアントから渡された「推定済みの日付」は再計算しない
+    let knownDates = new Set<string>();
+    try {
+      const raw = formData.get('knownDates');
+      if (typeof raw === 'string') knownDates = new Set(JSON.parse(raw) as string[]);
+    } catch {
+      // パースできなければ全日推定する
+    }
+
+    const dates = Array.from(dateGroups.keys())
+      .sort()
+      .slice(-30) // last 30 days
+      .filter((d) => !knownDates.has(d)); // 既に推定済みの日はスキップ
 
     // 1日ずつ直列に待つと遅いので、同時実行数を絞って並列に推定する。
     // （全同時だとGroqのレート制限に当たりやすいため CONCURRENCY で制限）

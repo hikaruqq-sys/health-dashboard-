@@ -13,6 +13,18 @@ export default function CSVUpload({ onLoaded }: { onLoaded: (entries: MealEntry[
     setLoading(true); setError('');
     const form = new FormData();
     form.append('file', file);
+    // すでに栄養推定済みの日付を渡し、サーバー側で再推定をスキップさせる
+    try {
+      const saved = localStorage.getItem('meal_nutrition');
+      if (saved) {
+        const known = (JSON.parse(saved) as DailyNutrition[])
+          .filter((d) => d.totalCalories > 0)
+          .map((d) => d.date);
+        if (known.length) form.append('knownDates', JSON.stringify(known));
+      }
+    } catch {
+      // localStorage が読めなくても通常アップロードにフォールバック
+    }
     try {
       const res = await fetch('/api/meals', { method: 'POST', body: form });
       const json = await res.json();
