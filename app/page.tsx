@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useSyncExternalStore } from 'react';
 import MetricCard from '@/components/MetricCard';
 import WeightChart from '@/components/WeightChart';
 import BodyChart from '@/components/BodyChart';
@@ -9,6 +9,10 @@ import MacroBar from '@/components/MacroBar';
 import MealLog from '@/components/MealLog';
 import CSVUpload from '@/components/CSVUpload';
 import AIAdvicePanel from '@/components/AIAdvicePanel';
+import HomeTab from '@/components/tabs/HomeTab';
+import HabitsTab from '@/components/tabs/HabitsTab';
+import TargetTab from '@/components/tabs/TargetTab';
+import LibraryTab from '@/components/tabs/LibraryTab';
 import { useTheme } from '@/components/ThemeProvider';
 import { BodyMetric, DailyNutrition, MealEntry } from '@/types';
 
@@ -19,10 +23,19 @@ const PERIOD_OPTIONS = [
 ];
 
 const TABS = [
-  { id: 'body', label: '体組成', icon: '⚖️' },
-  { id: 'nutrition', label: '食事・栄養', icon: '🥗' },
+  { id: 'home', label: 'ホーム', icon: '🏠' },
+  { id: 'habits', label: '習慣', icon: '🔥' },
+  { id: 'target', label: '目標', icon: '🎯' },
+  { id: 'health', label: '健康', icon: '🏃' },
+  { id: 'library', label: '本・映画', icon: '📚' },
 ] as const;
 type Tab = typeof TABS[number]['id'];
+
+/** 表示期間の切り替えが意味を持つのは健康タブ（体組成・食事）だけ */
+const PERIOD_TABS: Tab[] = ['health'];
+
+/** Tailwind の md ブレークポイントと揃える */
+const DESKTOP_QUERY = '(min-width: 768px)';
 
 export default function Dashboard() {
   const { theme, toggle } = useTheme();
@@ -34,7 +47,7 @@ export default function Dashboard() {
   const [isMealMock, setIsMealMock] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncedAt, setSyncedAt] = useState<Date | null>(null);
-  const [activeTab, setActiveTab] = useState<Tab>('body');
+  const [activeTab, setActiveTab] = useState<Tab>('home');
   const [selectedDay, setSelectedDay] = useState<DailyNutrition | null>(null);
 
   const loadHealth = useCallback(async () => {
@@ -79,6 +92,19 @@ export default function Dashboard() {
     setIsMealMock(json.mock ?? false);
     setSelectedDay(json.daily?.[json.daily.length - 1] ?? null);
   }, []);
+
+  // PC用とモバイル用のレイアウトは常に両方DOMに存在する（CSSで片方を隠している）。
+  // ヒートマップや本の一覧のように要素数が多いタブでは二重描画が効くので、
+  // 実際に表示されている側にだけ中身を入れる。
+  const isDesktop = useSyncExternalStore(
+    (onChange) => {
+      const mq = window.matchMedia(DESKTOP_QUERY);
+      mq.addEventListener('change', onChange);
+      return () => mq.removeEventListener('change', onChange);
+    },
+    () => window.matchMedia(DESKTOP_QUERY).matches,
+    () => true // サーバー描画時はPC想定（マウント直後に実際の幅で置き換わる）
+  );
 
   // Read OAuth tokens from URL params (Safari ITP workaround) and save to localStorage
   useEffect(() => {
@@ -149,6 +175,31 @@ export default function Dashboard() {
     setSelectedDay(daily[daily.length - 1] ?? null);
   };
 
+  // PC・モバイルで同じものを出すので、一度だけ組み立てて両方から使う
+  const content =
+    loading && PERIOD_TABS.includes(activeTab) ? (
+      <div className="flex items-center justify-center h-48" style={{ color: 'var(--text-muted)' }}>読み込み中...</div>
+    ) : activeTab === 'home' ? (
+      <HomeTab metrics={metrics} nutrition={nutrition} onNavigate={(t) => setActiveTab(t as Tab)} />
+    ) : activeTab === 'habits' ? (
+      <HabitsTab />
+    ) : activeTab === 'target' ? (
+      <TargetTab />
+    ) : activeTab === 'library' ? (
+      <LibraryTab />
+    ) : (
+      <HealthTab
+        metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock}
+        todayNutrition={todayNutrition}
+        selectedDay={selectedDay}
+        isMealMock={isMealMock}
+        setSelectedDay={setSelectedDay}
+        onMealLoaded={onMealLoaded}
+      />
+    );
+
+  const showPeriod = PERIOD_TABS.includes(activeTab);
+
   return (
     <div className="flex flex-col min-h-screen" style={{ background: 'var(--bg)', color: 'var(--text)' }}>
 
@@ -158,7 +209,7 @@ export default function Dashboard() {
         {/* Sidebar */}
         <aside className="w-56 flex-shrink-0 flex flex-col border-r" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
           <div className="px-5 py-6">
-            <h1 className="text-base font-bold" style={{ color: 'var(--text)' }}>🏃 健康ダッシュボード</h1>
+            <h1 className="text-base font-bold" style={{ color: 'var(--text)' }}>🐎 2026 Life Dashboard</h1>
             {syncedAt && (
               <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                 {syncedAt.toLocaleTimeString('ja-JP')}
@@ -185,7 +236,7 @@ export default function Dashboard() {
           </nav>
 
           {/* Period selector */}
-          <div className="px-4 py-4 border-t" style={{ borderColor: 'var(--border)' }}>
+          <div className="px-4 py-4 border-t" style={{ borderColor: 'var(--border)', display: showPeriod ? undefined : 'none' }}>
             <p className="text-xs mb-2" style={{ color: 'var(--text-muted)' }}>表示期間</p>
             <div className="flex flex-col gap-1">
               {PERIOD_OPTIONS.map((o) => (
@@ -222,23 +273,7 @@ export default function Dashboard() {
         </aside>
 
         {/* PC main content */}
-        <main className="flex-1 overflow-y-auto p-6">
-          {loading ? (
-            <div className="flex items-center justify-center h-48" style={{ color: 'var(--text-muted)' }}>読み込み中...</div>
-          ) : activeTab === 'body' ? (
-            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} />
-          ) : (
-            <NutritionTab
-              nutrition={nutrition}
-              todayNutrition={todayNutrition}
-              selectedDay={selectedDay}
-              isMealMock={isMealMock}
-              metrics={metrics}
-              setSelectedDay={setSelectedDay}
-              onMealLoaded={onMealLoaded}
-            />
-          )}
-        </main>
+        <main className="flex-1 overflow-y-auto p-6">{isDesktop && content}</main>
       </div>
 
       {/* ── Mobile: ヘッダー + コンテンツ + ボトムナビ ── */}
@@ -248,7 +283,7 @@ export default function Dashboard() {
         <header className="flex items-center justify-between px-4 py-3 border-b sticky top-0 z-10"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
           <div>
-            <h1 className="text-sm font-bold" style={{ color: 'var(--text)' }}>🏃 健康ダッシュボード</h1>
+            <h1 className="text-sm font-bold" style={{ color: 'var(--text)' }}>🐎 2026 Life Dashboard</h1>
             {syncedAt && (
               <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
                 {syncedAt.toLocaleTimeString('ja-JP')}
@@ -265,7 +300,10 @@ export default function Dashboard() {
         </header>
 
         {/* Period selector - horizontal scroll */}
-        <div className="flex gap-2 px-4 py-2 overflow-x-auto" style={{ background: 'var(--bg-card)', borderBottom: `1px solid var(--border)` }}>
+        <div
+          className="flex gap-2 px-4 py-2 overflow-x-auto"
+          style={{ background: 'var(--bg-card)', borderBottom: `1px solid var(--border)`, display: showPeriod ? undefined : 'none' }}
+        >
           {PERIOD_OPTIONS.map((o) => (
             <button
               key={o.days}
@@ -282,23 +320,7 @@ export default function Dashboard() {
         </div>
 
         {/* Mobile content */}
-        <main className="flex-1 overflow-y-auto px-4 py-4 pb-24">
-          {loading ? (
-            <div className="flex items-center justify-center h-48" style={{ color: 'var(--text-muted)' }}>読み込み中...</div>
-          ) : activeTab === 'body' ? (
-            <BodyTab metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock} />
-          ) : (
-            <NutritionTab
-              nutrition={nutrition}
-              todayNutrition={todayNutrition}
-              selectedDay={selectedDay}
-              isMealMock={isMealMock}
-              metrics={metrics}
-              setSelectedDay={setSelectedDay}
-              onMealLoaded={onMealLoaded}
-            />
-          )}
-        </main>
+        <main className="flex-1 overflow-y-auto px-4 py-4 pb-24">{!isDesktop && content}</main>
 
         {/* Bottom navigation */}
         <nav className="fixed bottom-0 left-0 right-0 flex border-t z-20"
@@ -307,11 +329,11 @@ export default function Dashboard() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className="flex-1 flex flex-col items-center gap-0.5 py-3 text-xs font-medium transition-colors"
+              className="flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors min-w-0"
               style={{ color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-muted)' }}
             >
-              <span className="text-xl">{tab.icon}</span>
-              <span>{tab.label}</span>
+              <span className="text-lg leading-none">{tab.icon}</span>
+              <span className="truncate w-full text-center">{tab.label}</span>
             </button>
           ))}
         </nav>
@@ -323,6 +345,65 @@ export default function Dashboard() {
 /* Returns true if any record has a value for the given metric key */
 function has(metrics: BodyMetric[], key: keyof BodyMetric): boolean {
   return metrics.some((m) => m[key] != null);
+}
+
+/* ── 健康タブ（体組成・食事をサブ切り替えでまとめる） ── */
+const HEALTH_SUBTABS = [
+  { id: 'body', label: '体組成', icon: '⚖️' },
+  { id: 'nutrition', label: '食事', icon: '🥗' },
+] as const;
+type HealthSubTab = typeof HEALTH_SUBTABS[number]['id'];
+
+function HealthTab(props: {
+  metrics: BodyMetric[];
+  nutrition: DailyNutrition[];
+  latest: BodyMetric | undefined;
+  prev: BodyMetric | undefined;
+  trend: (key: keyof BodyMetric) => 'up' | 'down' | 'flat';
+  isMock: boolean;
+  todayNutrition: DailyNutrition | null | undefined;
+  selectedDay: DailyNutrition | null;
+  isMealMock: boolean;
+  setSelectedDay: (d: DailyNutrition) => void;
+  onMealLoaded: (entries: MealEntry[], daily: DailyNutrition[]) => void;
+}) {
+  const [sub, setSub] = useState<HealthSubTab>('body');
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex gap-2">
+        {HEALTH_SUBTABS.map((t) => (
+          <button
+            key={t.id}
+            onClick={() => setSub(t.id)}
+            className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 transition-colors"
+            style={{
+              background: sub === t.id ? 'var(--accent)' : 'var(--bg-card)',
+              color: sub === t.id ? '#fff' : 'var(--text-sub)',
+              border: `1px solid ${sub === t.id ? 'var(--accent)' : 'var(--border)'}`,
+            }}
+          >
+            <span>{t.icon}</span>{t.label}
+          </button>
+        ))}
+      </div>
+      {sub === 'body' ? (
+        <BodyTab
+          metrics={props.metrics} nutrition={props.nutrition}
+          latest={props.latest} prev={props.prev} trend={props.trend} isMock={props.isMock}
+        />
+      ) : (
+        <NutritionTab
+          nutrition={props.nutrition}
+          todayNutrition={props.todayNutrition}
+          selectedDay={props.selectedDay}
+          isMealMock={props.isMealMock}
+          metrics={props.metrics}
+          setSelectedDay={props.setSelectedDay}
+          onMealLoaded={props.onMealLoaded}
+        />
+      )}
+    </div>
+  );
 }
 
 /* ── Body composition tab ── */

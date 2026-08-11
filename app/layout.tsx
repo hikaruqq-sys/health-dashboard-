@@ -2,12 +2,13 @@ import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/ThemeProvider";
+import { LifeDataProvider } from "@/components/LifeDataProvider";
 
 const geist = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "健康ダッシュボード",
-  description: "体組成・食事・栄養を一元管理",
+  title: "2026 Life Dashboard",
+  description: "目標・習慣・体組成・食事・本&映画を一元管理",
 };
 
 export const viewport: Viewport = {
@@ -23,7 +24,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="ja" className={geist.variable} suppressHydrationWarning>
       <body className="min-h-screen antialiased">
-        <ThemeProvider>{children}</ThemeProvider>
+        <ThemeProvider>
+          <LifeDataProvider>{children}</LifeDataProvider>
+        </ThemeProvider>
       </body>
     </html>
   );

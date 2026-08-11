@@ -1,12 +1,42 @@
-# Health Dashboard（健康ダッシュボード）
+# 2026 Life Dashboard
 
-TANITA の体組成データと、iPhone「Streaks」アプリからエクスポートした食事記録を
-取り込み、AI が栄養推定・健康アドバイスを行う個人用の健康ダッシュボード Web アプリ。
+年間目標・習慣・体組成・食事・本&映画を1つにまとめた個人用ダッシュボード。
+もともと健康（TANITA + Streaks の食事ログ + AI 栄養推定）だけだったものに、
+Notion で管理していた 2026 年の目標・習慣カウント・読書リストを取り込んだ。
 iPhone のホーム画面ウィジェット（Scriptable）で体重・PFC の推移も確認できる。
 
 - 本番URL: https://health-dashboard-dusky-xi.vercel.app
 - リポジトリ: https://github.com/hikaruqq-sys/health-dashboard-
 - ホスティング: Vercel（プロジェクト名 `health-dashboard`）
+
+## タブ構成
+
+| タブ | 中身 | データの入り方 |
+|------|------|----------------|
+| ホーム | 年/四半期/月の経過バー、各タブのサマリ、体重・カロリーのミニグラフ、自作アプリへのリンク | 他タブから自動集計 |
+| 習慣 | 年間ヒートマップ、月別カウント表、連続日数、月別グラフ | Streaks の CSV を取り込み／その場でタップ記録 |
+| 目標 | 2026 Target（カテゴリ×項目×Q1-Q4）、四半期ごとの達成リング | 初回に `data/targets2026.ts` から投入、以後はアプリ上で編集 |
+| 体組成 | 体重・体脂肪・筋肉量の推移、AIアドバイス | TANITA Health Planet API |
+| 食事 | カロリー・PFC の推移、食事ログ | Streaks の食事CSV → AI が栄養推定 |
+| 本・映画 | 一覧・フィルタ・検索、年間読了カウンタ（目標24冊） | Notion の book&movies CSV を取り込み |
+
+家計簿は別アプリ（money-dashboard）に一本化しているので、ホームのリンクから飛ぶだけ。
+
+## 習慣・目標・本のデータ保存（Supabase）
+
+`lib/lifeStore.ts` が担当。**money-dashboard / rio-rankings と同じ Supabase プロジェクト**に
+`life_` プレフィックスのテーブルを追加して相乗りしている。
+
+**初回だけ手動セットアップが必要**： Supabase ダッシュボード → SQL Editor で
+[`supabase/schema.sql`](supabase/schema.sql) を実行する。実行するまではブラウザの
+localStorage にだけ保存され、端末をまたいで共有されない（アプリは落ちずに動く）。
+
+- 接続情報は `lib/supabase.ts`。環境変数 `NEXT_PUBLIC_SUPABASE_URL` /
+  `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` があればそれを使い、無ければ
+  ファイル内のフォールバック値（publishable キー＝公開前提）を使う。
+- 読み込みに成功すると localStorage にもキャッシュを書くので、オフラインでも直前の状態が出る。
+- ⚠️ RLS は anon の読み書きを許可している（URLを知っていれば誰でも編集できる）。
+  家族以外に公開する段階になったら Supabase Auth に移行すること。
 
 ---
 
