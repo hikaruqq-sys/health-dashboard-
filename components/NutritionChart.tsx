@@ -37,7 +37,7 @@ export default function NutritionChart({
         {onSelectDay && <span className="text-xs" style={{ color: 'var(--text-muted)' }}>タップで詳細</span>}
       </div>
       <ResponsiveContainer width="100%" height={200}>
-        <BarChart data={formatted} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
+        <BarChart data={formatted} syncId="health-sync" margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
           <XAxis dataKey="label" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
           <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />

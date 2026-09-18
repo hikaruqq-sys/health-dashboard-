@@ -5,6 +5,7 @@ import MetricCard from '@/components/MetricCard';
 import WeightChart from '@/components/WeightChart';
 import BodyChart from '@/components/BodyChart';
 import NutritionChart from '@/components/NutritionChart';
+import HealthCombinedChart from '@/components/HealthCombinedChart';
 import MacroBar from '@/components/MacroBar';
 import MealLog from '@/components/MealLog';
 import CSVUpload from '@/components/CSVUpload';
@@ -347,13 +348,7 @@ function has(metrics: BodyMetric[], key: keyof BodyMetric): boolean {
   return metrics.some((m) => m[key] != null);
 }
 
-/* ── 健康タブ（体組成・食事をサブ切り替えでまとめる） ── */
-const HEALTH_SUBTABS = [
-  { id: 'body', label: '体組成', icon: '⚖️' },
-  { id: 'nutrition', label: '食事', icon: '🥗' },
-] as const;
-type HealthSubTab = typeof HEALTH_SUBTABS[number]['id'];
-
+/* ── 健康タブ（体組成・食事・カロリー推移を1つのページに統合） ── */
 function HealthTab(props: {
   metrics: BodyMetric[];
   nutrition: DailyNutrition[];
@@ -367,63 +362,38 @@ function HealthTab(props: {
   setSelectedDay: (d: DailyNutrition) => void;
   onMealLoaded: (entries: MealEntry[], daily: DailyNutrition[]) => void;
 }) {
-  const [sub, setSub] = useState<HealthSubTab>('body');
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex gap-2">
-        {HEALTH_SUBTABS.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setSub(t.id)}
-            className="text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 transition-colors"
-            style={{
-              background: sub === t.id ? 'var(--accent)' : 'var(--bg-card)',
-              color: sub === t.id ? '#fff' : 'var(--text-sub)',
-              border: `1px solid ${sub === t.id ? 'var(--accent)' : 'var(--border)'}`,
-            }}
-          >
-            <span>{t.icon}</span>{t.label}
-          </button>
-        ))}
-      </div>
-      {sub === 'body' ? (
-        <BodyTab
-          metrics={props.metrics} nutrition={props.nutrition}
-          latest={props.latest} prev={props.prev} trend={props.trend} isMock={props.isMock}
-        />
-      ) : (
-        <NutritionTab
-          nutrition={props.nutrition}
-          todayNutrition={props.todayNutrition}
-          selectedDay={props.selectedDay}
-          isMealMock={props.isMealMock}
-          metrics={props.metrics}
-          setSelectedDay={props.setSelectedDay}
-          onMealLoaded={props.onMealLoaded}
-        />
-      )}
-    </div>
-  );
-}
+  const {
+    metrics,
+    nutrition,
+    latest,
+    prev,
+    trend,
+    isMock,
+    todayNutrition,
+    selectedDay,
+    isMealMock,
+    setSelectedDay,
+    onMealLoaded,
+  } = props;
 
-/* ── Body composition tab ── */
-function BodyTab({ metrics, nutrition, latest, prev, trend, isMock }: {
-  metrics: BodyMetric[];
-  nutrition: DailyNutrition[];
-  latest: BodyMetric | undefined;
-  prev: BodyMetric | undefined;
-  trend: (key: keyof BodyMetric) => 'up' | 'down' | 'flat';
-  isMock: boolean;
-}) {
+  const handleSelectDateFromChart = (dateStr: string) => {
+    const day = nutrition.find((n) => n.date === dateStr);
+    if (day) setSelectedDay(day);
+  };
+
   return (
     <div className="flex flex-col gap-4">
-      {/* Tanita connect banner */}
+      {/* タニタ体組成計連携バナー */}
       {(isMock || metrics.length === 0) && (
-        <div className="rounded-2xl border p-4 flex items-center justify-between gap-3"
-          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+        <div
+          className="rounded-2xl border p-4 flex items-center justify-between gap-3"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+        >
           <div>
             <p className="text-sm font-medium" style={{ color: 'var(--text)' }}>⚖️ タニタ体組成計を連携する</p>
-            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>現在はデモデータを表示中。連携すると実際の計測データが同期されます。</p>
+            <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>
+              現在はデモデータを表示中。連携すると実際の計測データが同期されます。
+            </p>
           </div>
           <a
             href="/api/auth/start"
@@ -434,10 +404,18 @@ function BodyTab({ metrics, nutrition, latest, prev, trend, isMock }: {
           </a>
         </div>
       )}
+
+      {/* 主要指標カード */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         {has(metrics, 'weight') && (
-          <MetricCard label="体重" value={latest?.weight} unit="kg" trend={trend('weight')} trendGood="down"
-            sub={prev?.weight ? `前回比 ${((latest?.weight ?? 0) - prev.weight).toFixed(1)} kg` : undefined} />
+          <MetricCard
+            label="体重"
+            value={latest?.weight}
+            unit="kg"
+            trend={trend('weight')}
+            trendGood="down"
+            sub={prev?.weight ? `前回比 ${((latest?.weight ?? 0) - prev.weight).toFixed(1)} kg` : undefined}
+          />
         )}
         {has(metrics, 'bodyFat') && (
           <MetricCard label="体脂肪率" value={latest?.bodyFat} unit="%" trend={trend('bodyFat')} trendGood="down" />
@@ -445,29 +423,26 @@ function BodyTab({ metrics, nutrition, latest, prev, trend, isMock }: {
         {has(metrics, 'muscleMass') && (
           <MetricCard label="筋肉量" value={latest?.muscleMass} unit="kg" trend={trend('muscleMass')} trendGood="up" />
         )}
-        {has(metrics, 'bmr') && (
-          <MetricCard label="基礎代謝" value={latest?.bmr} unit="kcal" trend={trend('bmr')} trendGood="up" />
-        )}
+        <MetricCard
+          label="本日の摂取カロリー"
+          value={todayNutrition ? Math.round(todayNutrition.totalCalories) : '—'}
+          unit="kcal"
+          sub={
+            todayNutrition
+              ? `P:${Math.round(todayNutrition.totalProtein)}g F:${Math.round(todayNutrition.totalFat)}g C:${Math.round(todayNutrition.totalCarbs)}g`
+              : undefined
+          }
+        />
       </div>
-      <WeightChart data={metrics} />
-      <BodyChart data={metrics} />
-      <AIAdvicePanel metrics={metrics} nutrition={nutrition} />
-    </div>
-  );
-}
 
-/* ── Nutrition tab ── */
-function NutritionTab({ nutrition, todayNutrition, selectedDay, isMealMock, metrics, setSelectedDay, onMealLoaded }: {
-  nutrition: DailyNutrition[];
-  todayNutrition: DailyNutrition | null | undefined;
-  selectedDay: DailyNutrition | null;
-  isMealMock: boolean;
-  metrics: BodyMetric[];
-  setSelectedDay: (d: DailyNutrition) => void;
-  onMealLoaded: (entries: MealEntry[], daily: DailyNutrition[]) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-4">
+      {/* 体重・体脂肪率 & カロリー・栄養推移 統合グラフ */}
+      <HealthCombinedChart
+        metrics={metrics}
+        nutrition={nutrition}
+        onSelectDate={handleSelectDateFromChart}
+      />
+
+      {/* 本日の PFC バランス */}
       {todayNutrition && (
         <MacroBar
           calories={todayNutrition.totalCalories}
@@ -476,11 +451,16 @@ function NutritionTab({ nutrition, todayNutrition, selectedDay, isMealMock, metr
           carbs={todayNutrition.totalCarbs}
         />
       )}
+
+      {/* カロリー・栄養詳細バーチャート（統合グラフとカーソルが同期） */}
       <NutritionChart data={nutrition} selectedDate={selectedDay?.date} onSelectDay={setSelectedDay} />
 
-      {/* Selected day meals (also shown lower) */}
+      {/* 選択された日の食事ログ */}
       {selectedDay && (
-        <div className="rounded-2xl border p-5 flex flex-col gap-3" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+        <div
+          className="rounded-2xl border p-5 flex flex-col gap-3"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+        >
           <h2 className="text-sm font-semibold" style={{ color: 'var(--text-sub)' }}>
             🍽 {selectedDay.date} の食事（{Math.round(selectedDay.totalCalories)} kcal）
           </h2>
@@ -488,10 +468,13 @@ function NutritionTab({ nutrition, todayNutrition, selectedDay, isMealMock, metr
         </div>
       )}
 
-      {/* CSV upload - primary import method */}
+      {/* 食事データインポート (Streaks CSV) */}
       <Card title="📱 iPhoneから食事データをインポート" badge={isMealMock ? 'デモデータ' : undefined}>
         <CSVUpload onLoaded={onMealLoaded} />
-        <div className="text-xs rounded-xl p-3 mt-1" style={{ background: 'var(--bg-card2)', color: 'var(--text-muted)' }}>
+        <div
+          className="text-xs rounded-xl p-3 mt-1"
+          style={{ background: 'var(--bg-card2)', color: 'var(--text-muted)' }}
+        >
           <p className="font-medium mb-1" style={{ color: 'var(--text-sub)' }}>📱 Streaksのエクスポート手順</p>
           <ol className="list-decimal ml-4 space-y-0.5">
             <li>Streaksアプリ → 該当ログを開く</li>
@@ -502,7 +485,7 @@ function NutritionTab({ nutrition, todayNutrition, selectedDay, isMealMock, metr
         </div>
       </Card>
 
-      {/* Day selector */}
+      {/* 直近の日付選択ピッカー */}
       {nutrition.length > 0 && (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {nutrition.slice(-7).map((d) => (
@@ -522,6 +505,7 @@ function NutritionTab({ nutrition, todayNutrition, selectedDay, isMealMock, metr
         </div>
       )}
 
+      {/* AI 健康アドバイス */}
       <AIAdvicePanel metrics={metrics} nutrition={nutrition} />
     </div>
   );
