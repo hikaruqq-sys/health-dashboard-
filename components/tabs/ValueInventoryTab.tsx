@@ -1285,6 +1285,23 @@ export default function ValueInventoryTab() {
                 onChange={(e) => setManualImageUrl(e.target.value)}
                 className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
               />
+              {manualImageUrl && (
+                <div className="w-full h-32 rounded-xl overflow-hidden bg-slate-900/40 border border-[var(--border)] flex items-center justify-center relative mt-1.5">
+                  <img
+                    src={manualImageUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full object-cover blur-xl opacity-25 scale-125 pointer-events-none select-none"
+                    onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                  />
+                  <img
+                    src={manualImageUrl}
+                    alt="Preview"
+                    className="relative z-[1] max-w-full max-h-full object-contain p-2 drop-shadow-md"
+                    onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                  />
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border)]">
@@ -1403,8 +1420,20 @@ export default function ValueInventoryTab() {
               className="text-xs p-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
             />
             {editingImageUrl && (
-              <div className="w-full h-36 rounded-xl overflow-hidden bg-black/10 border border-[var(--border)] flex items-center justify-center">
-                <img src={editingImageUrl} alt="Preview" className="w-full h-full object-cover" />
+              <div className="w-full h-44 rounded-xl overflow-hidden bg-slate-900/40 border border-[var(--border)] flex items-center justify-center relative">
+                <img
+                  src={editingImageUrl}
+                  alt=""
+                  aria-hidden="true"
+                  className="absolute inset-0 w-full h-full object-cover blur-xl opacity-25 scale-125 pointer-events-none select-none"
+                  onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                />
+                <img
+                  src={editingImageUrl}
+                  alt="Preview"
+                  className="relative z-[1] max-w-full max-h-full object-contain p-2 drop-shadow-md"
+                  onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                />
               </div>
             )}
             <div className="flex justify-end gap-2">
@@ -1437,9 +1466,24 @@ export default function ValueInventoryTab() {
               className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden flex flex-col transition-all hover:border-[var(--accent)] shadow-sm"
             >
               {/* 画像エリア */}
-              <div className="relative w-full h-44 bg-[var(--bg-card2)] overflow-hidden group">
+              <div className="relative w-full h-48 bg-slate-900/30 dark:bg-black/30 overflow-hidden group flex items-center justify-center">
                 {item.imageUrl ? (
-                  <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
+                  <>
+                    <img
+                      src={item.imageUrl}
+                      alt=""
+                      aria-hidden="true"
+                      className="absolute inset-0 w-full h-full object-cover blur-xl opacity-25 scale-125 pointer-events-none select-none"
+                      onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                    />
+                    <img
+                      src={item.imageUrl}
+                      alt={item.name}
+                      className="relative z-[1] max-w-full max-h-full object-contain p-2 transition-transform duration-300 group-hover:scale-105 drop-shadow-md"
+                      loading="lazy"
+                      onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                    />
+                  </>
                 ) : (
                   <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-[var(--text-muted)] bg-gradient-to-br from-slate-800 to-slate-900">
                     <span className="text-3xl">
@@ -1592,13 +1636,24 @@ export default function ValueInventoryTab() {
                 className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden flex flex-col transition-all hover:border-[var(--accent)] shadow-sm"
               >
                 {/* 画像エリア */}
-                <div className="relative w-full h-44 bg-[var(--bg-card2)] overflow-hidden group">
+                <div className="relative w-full h-48 bg-slate-900/30 dark:bg-black/30 overflow-hidden group flex items-center justify-center">
                   {group.imageUrl ? (
-                    <img
-                      src={group.imageUrl}
-                      alt={group.title}
-                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
-                    />
+                    <>
+                      <img
+                        src={group.imageUrl}
+                        alt=""
+                        aria-hidden="true"
+                        className="absolute inset-0 w-full h-full object-cover blur-xl opacity-25 scale-125 pointer-events-none select-none"
+                        onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                      />
+                      <img
+                        src={group.imageUrl}
+                        alt={group.title}
+                        className="relative z-[1] max-w-full max-h-full object-contain p-2 transition-transform duration-300 group-hover:scale-105 drop-shadow-md"
+                        loading="lazy"
+                        onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                      />
+                    </>
                   ) : (
                     <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-[var(--text-muted)] bg-gradient-to-br from-indigo-950 to-slate-900">
                       <span className="text-3xl">🎬</span>
