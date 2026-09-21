@@ -19,8 +19,9 @@ export const CLOTHING_CATEGORIES: { id: ClothingCategory | 'all'; label: string;
 
 import { SEED_RECEIPT_ITEMS, SEED_VIEWING_ITEMS } from '@/data/receiptSeedData';
 
-const RECEIPT_KEY = 'life_receipt_items_v2';
-const VIEWING_KEY = 'life_viewing_items_v2';
+const RECEIPT_KEY = 'life_receipt_items_v4';
+const VIEWING_KEY = 'life_viewing_items_v4';
+const USER_OVERRIDES_KEY = 'life_user_overrides_v1';
 
 export const INVENTORY_CATEGORIES: { id: InventoryCategory; label: string; icon: string }[] = [
   { id: 'book', label: '読書記録', icon: '📚' },
@@ -43,14 +44,89 @@ export const RATING_LEVELS: { rating: number; label: string; icon: string }[] = 
   { rating: 1, label: '微妙・いまいち', icon: '★☆☆☆' },
 ];
 
-/** レシートアイテムの読み込み */
+export interface UserOverride {
+  imageUrl?: string;
+  rating?: number;
+  notes?: string;
+  valueTag?: ValueTag;
+  season?: ClothingSeason;
+  clothingCategory?: ClothingCategory;
+  category?: InventoryCategory;
+  durationMin?: number;
+}
+
+/** ユーザーカスタマイズ（画像・評価・感想など）を取得 */
+export function loadUserOverrides(): Record<string, UserOverride> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = localStorage.getItem(USER_OVERRIDES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+/** 特定アイテムのユーザーカスタマイズを永続保存（コード変更やSEED更新でも絶対に消えない） */
+export function saveItemOverride(keyOrId: string, nameOrTitle: string, updates: UserOverride): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const overrides = loadUserOverrides();
+    const existing = overrides[keyOrId] || (nameOrTitle ? overrides[nameOrTitle] : undefined) || {};
+    const merged = { ...existing, ...updates };
+    overrides[keyOrId] = merged;
+    if (nameOrTitle && nameOrTitle !== keyOrId) {
+      overrides[nameOrTitle] = merged;
+    }
+    localStorage.setItem(USER_OVERRIDES_KEY, JSON.stringify(overrides));
+  } catch (e) {
+    console.error('Failed to save user override', e);
+  }
+}
+
+/** レシートアイテムの読み込み（過去バージョンの引き継ぎ ＆ ユーザー画像の復元） */
 export function loadReceiptItems(): ReceiptItem[] {
   if (typeof window === 'undefined') return SEED_RECEIPT_ITEMS;
   try {
-    const raw = localStorage.getItem(RECEIPT_KEY);
-    if (!raw) return SEED_RECEIPT_ITEMS;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : SEED_RECEIPT_ITEMS;
+    // v4 -> v3 -> v2 -> v1 の順で既存データを検索して引き継ぐ
+    let raw = localStorage.getItem(RECEIPT_KEY);
+    if (!raw) raw = localStorage.getItem('life_receipt_items_v3');
+    if (!raw) raw = localStorage.getItem('life_receipt_items_v2');
+    if (!raw) raw = localStorage.getItem('life_receipt_items_v1');
+
+    let baseItems: ReceiptItem[] = SEED_RECEIPT_ITEMS;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        baseItems = parsed;
+        // SEEDにしかない新規アイテムがあれば追加マージ
+        const existingIds = new Set(baseItems.map((b) => b.id));
+        const newSeedItems = SEED_RECEIPT_ITEMS.filter((s) => !existingIds.has(s.id));
+        if (newSeedItems.length > 0) {
+          baseItems = [...baseItems, ...newSeedItems];
+        }
+      }
+    }
+
+    // ユーザーオーバーライド（ユーザーが設定した画像や感想）を確実に適用
+    const overrides = loadUserOverrides();
+    const result = baseItems.map((it) => {
+      const ov = overrides[it.id] || overrides[it.name];
+      if (ov) {
+        return {
+          ...it,
+          ...(ov.imageUrl !== undefined && { imageUrl: ov.imageUrl }),
+          ...(ov.rating !== undefined && { rating: ov.rating }),
+          ...(ov.notes !== undefined && { notes: ov.notes }),
+          ...(ov.valueTag !== undefined && { valueTag: ov.valueTag }),
+          ...(ov.season !== undefined && { season: ov.season }),
+          ...(ov.clothingCategory !== undefined && { clothingCategory: ov.clothingCategory }),
+          ...(ov.category !== undefined && { category: ov.category }),
+        };
+      }
+      return it;
+    });
+
+    return result;
   } catch {
     return SEED_RECEIPT_ITEMS;
   }
@@ -66,14 +142,46 @@ export function saveReceiptItems(items: ReceiptItem[]): void {
   }
 }
 
-/** 視聴ログの読み込み */
+/** 視聴ログの読み込み（過去バージョンの引き継ぎ ＆ ユーザー画像の復元） */
 export function loadViewingItems(): ViewingItem[] {
   if (typeof window === 'undefined') return SEED_VIEWING_ITEMS;
   try {
-    const raw = localStorage.getItem(VIEWING_KEY);
-    if (!raw) return SEED_VIEWING_ITEMS;
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : SEED_VIEWING_ITEMS;
+    let raw = localStorage.getItem(VIEWING_KEY);
+    if (!raw) raw = localStorage.getItem('life_viewing_items_v3');
+    if (!raw) raw = localStorage.getItem('life_viewing_items_v2');
+    if (!raw) raw = localStorage.getItem('life_viewing_items_v1');
+
+    let baseItems: ViewingItem[] = SEED_VIEWING_ITEMS;
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        baseItems = parsed;
+        const existingIds = new Set(baseItems.map((b) => b.id));
+        const newSeedItems = SEED_VIEWING_ITEMS.filter((s) => !existingIds.has(s.id));
+        if (newSeedItems.length > 0) {
+          baseItems = [...baseItems, ...newSeedItems];
+        }
+      }
+    }
+
+    // ユーザーオーバーライドを適用
+    const overrides = loadUserOverrides();
+    const result = baseItems.map((it) => {
+      const ov = overrides[it.id] || overrides[it.title.trim()];
+      if (ov) {
+        return {
+          ...it,
+          ...(ov.imageUrl !== undefined && { imageUrl: ov.imageUrl }),
+          ...(ov.rating !== undefined && { rating: ov.rating }),
+          ...(ov.notes !== undefined && { notes: ov.notes }),
+          ...(ov.valueTag !== undefined && { valueTag: ov.valueTag }),
+          ...(ov.durationMin !== undefined && { durationMin: ov.durationMin }),
+        };
+      }
+      return it;
+    });
+
+    return result;
   } catch {
     return SEED_VIEWING_ITEMS;
   }

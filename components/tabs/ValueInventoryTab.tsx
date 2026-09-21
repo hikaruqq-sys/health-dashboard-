@@ -10,6 +10,7 @@ import {
   saveReceiptItems,
   loadViewingItems,
   saveViewingItems,
+  saveItemOverride,
   parseReceiptCSV,
   parseImportCSV,
   computeMonthlyTrends,
@@ -134,14 +135,8 @@ export default function ValueInventoryTab() {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingImageUrl, setEditingImageUrl] = useState('');
 
-  // 初期ロード (v3キー)
+  // 初期ロード（過去データ・ユーザー画像オーバーライドを確実に反映）
   useEffect(() => {
-    // 既存の古いキャッシュをクリアして新Notionシードを反映
-    const raw = localStorage.getItem('life_receipt_items_v3');
-    if (!raw) {
-      localStorage.removeItem('life_receipt_items_v1');
-      localStorage.removeItem('life_receipt_items_v2');
-    }
     setReceipts(loadReceiptItems());
     setViewings(loadViewingItems());
   }, []);
@@ -149,15 +144,37 @@ export default function ValueInventoryTab() {
   // 月別推移（時系列）の計算
   const monthlyTrends = useMemo(() => computeMonthlyTrends(receipts, viewings), [receipts, viewings]);
 
-  // アイテム更新（レシート）
+  // アイテム更新（レシート：画像やメモ変更を確実に保護）
   const handleUpdateReceipt = (id: string, updates: Partial<ReceiptItem>) => {
+    const item = receipts.find((r) => r.id === id);
+    if (item) {
+      saveItemOverride(id, item.name, {
+        ...(updates.imageUrl !== undefined && { imageUrl: updates.imageUrl }),
+        ...(updates.rating !== undefined && { rating: updates.rating }),
+        ...(updates.notes !== undefined && { notes: updates.notes }),
+        ...(updates.valueTag !== undefined && { valueTag: updates.valueTag }),
+        ...(updates.season !== undefined && { season: updates.season }),
+        ...(updates.clothingCategory !== undefined && { clothingCategory: updates.clothingCategory }),
+        ...(updates.category !== undefined && { category: updates.category }),
+      });
+    }
     const next = receipts.map((r) => (r.id === id ? { ...r, ...updates } : r));
     setReceipts(next);
     saveReceiptItems(next);
   };
 
-  // アイテム更新（視聴）
+  // アイテム更新（視聴：画像やメモ変更を確実に保護）
   const handleUpdateViewing = (id: string, updates: Partial<ViewingItem>) => {
+    const item = viewings.find((v) => v.id === id);
+    if (item) {
+      saveItemOverride(id, item.title.trim(), {
+        ...(updates.imageUrl !== undefined && { imageUrl: updates.imageUrl }),
+        ...(updates.rating !== undefined && { rating: updates.rating }),
+        ...(updates.notes !== undefined && { notes: updates.notes }),
+        ...(updates.valueTag !== undefined && { valueTag: updates.valueTag }),
+        ...(updates.durationMin !== undefined && { durationMin: updates.durationMin }),
+      });
+    }
     const next = viewings.map((v) => (v.id === id ? { ...v, ...updates } : v));
     setViewings(next);
     saveViewingItems(next);
@@ -355,6 +372,7 @@ export default function ValueInventoryTab() {
 
   // 視聴グループの価値タグ一括更新
   const handleChangeValueTagViewingGroup = (groupTitle: string, tag: ValueTag) => {
+    saveItemOverride(groupTitle, groupTitle, { valueTag: tag });
     const next = viewings.map((v) => (v.title.trim() === groupTitle ? { ...v, valueTag: tag } : v));
     setViewings(next);
     saveViewingItems(next);
@@ -362,6 +380,7 @@ export default function ValueInventoryTab() {
 
   // 視聴グループの評価一括更新
   const handleUpdateViewingGroupRating = (groupTitle: string, rating: number) => {
+    saveItemOverride(groupTitle, groupTitle, { rating });
     const next = viewings.map((v) => (v.title.trim() === groupTitle ? { ...v, rating } : v));
     setViewings(next);
     saveViewingItems(next);
@@ -400,6 +419,11 @@ export default function ValueInventoryTab() {
     const sorted = [...targetItems].sort((a, b) => b.date.localeCompare(a.date));
     const latestId = sorted[0].id;
 
+    saveItemOverride(groupTitle, groupTitle, {
+      notes: editingViewingNotes.trim() || undefined,
+      durationMin: newTotal,
+    });
+
     const next = viewings.map((v) => {
       if (v.title.trim() !== groupTitle || v.deleted) return v;
 
@@ -428,19 +452,34 @@ export default function ValueInventoryTab() {
     setEditingViewingGroupTitle(null);
   };
 
-  // 画像URL保存
+  // 画像URL保存（絶対に消えないオーバーライド保存連動）
   const handleSaveImageUrl = (idOrTitle: string | null, isViewing: boolean) => {
     if (!idOrTitle) return;
+    const trimmed = editingImageUrl.trim();
+
     if (isViewing) {
+      saveItemOverride(idOrTitle, idOrTitle, { imageUrl: trimmed || undefined });
       const next = viewings.map((v) =>
         v.id === idOrTitle || v.title.trim() === idOrTitle
-          ? { ...v, imageUrl: editingImageUrl.trim() || undefined }
+          ? { ...v, imageUrl: trimmed || undefined }
           : v
       );
       setViewings(next);
       saveViewingItems(next);
     } else {
-      handleUpdateReceipt(idOrTitle, { imageUrl: editingImageUrl.trim() || undefined });
+      const item = receipts.find((r) => r.id === idOrTitle || r.name === idOrTitle);
+      if (item) {
+        saveItemOverride(item.id, item.name, { imageUrl: trimmed || undefined });
+      } else {
+        saveItemOverride(idOrTitle, idOrTitle, { imageUrl: trimmed || undefined });
+      }
+      const next = receipts.map((r) =>
+        r.id === idOrTitle || r.name === idOrTitle
+          ? { ...r, imageUrl: trimmed || undefined }
+          : r
+      );
+      setReceipts(next);
+      saveReceiptItems(next);
     }
     setEditingItemId(null);
     setEditingImageUrl('');
