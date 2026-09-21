@@ -274,6 +274,14 @@ export default function ValueInventoryTab() {
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [receipts, activeSubTab, selectedSeason, selectedClothingCategory, searchQuery]);
 
+  // 視聴ログのインライン編集用状態
+  const [editingViewingGroupTitle, setEditingViewingGroupTitle] = useState<string | null>(null);
+  const [editingViewingDuration, setEditingViewingDuration] = useState<number>(0);
+  const [editingViewingNotes, setEditingViewingNotes] = useState<string>('');
+
+  // 複数エピソードのアコーディオン展開状態
+  const [expandedViewingGroups, setExpandedViewingGroups] = useState<Record<string, boolean>>({});
+
   // フィルタ済み視聴ログ
   const filteredViewings = useMemo(() => {
     return viewings
@@ -290,12 +298,148 @@ export default function ValueInventoryTab() {
       .sort((a, b) => b.date.localeCompare(a.date));
   }, [viewings, searchQuery]);
 
+  // タイトルごとに集約した視聴ログ（同じタイトルは合算）
+  const groupedViewings = useMemo(() => {
+    const map = new Map<string, ViewingItem[]>();
+    for (const v of filteredViewings) {
+      const key = v.title.trim();
+      const list = map.get(key) || [];
+      list.push(v);
+      map.set(key, list);
+    }
+
+    const groups: {
+      title: string;
+      items: ViewingItem[];
+      totalDurationMin: number;
+      latestDate: string;
+      earliestDate: string;
+      platform: string;
+      valueTag: ValueTag;
+      rating?: number;
+      imageUrl?: string;
+      notes?: string;
+    }[] = [];
+
+    for (const [title, list] of map.entries()) {
+      const sorted = [...list].sort((a, b) => b.date.localeCompare(a.date));
+      const totalDurationMin = sorted.reduce((sum, it) => sum + (it.durationMin || 0), 0);
+      const latestDate = sorted[0].date;
+      const earliestDate = sorted[sorted.length - 1].date;
+      const platform = sorted[0].platform || 'Prime Video';
+
+      const hasWb = sorted.some((it) => it.valueTag === 'well-being');
+      const hasOs = sorted.some((it) => it.valueTag === 'ownership');
+      const valueTag: ValueTag = hasWb ? 'well-being' : hasOs ? 'ownership' : (sorted[0].valueTag || 'none');
+
+      const rating = sorted.find((it) => it.rating !== undefined && it.rating > 0)?.rating;
+      const imageUrl = sorted.find((it) => it.imageUrl)?.imageUrl;
+      const notes = sorted.find((it) => it.notes)?.notes;
+
+      groups.push({
+        title,
+        items: sorted,
+        totalDurationMin,
+        latestDate,
+        earliestDate,
+        platform,
+        valueTag,
+        rating,
+        imageUrl,
+        notes,
+      });
+    }
+
+    return groups.sort((a, b) => b.latestDate.localeCompare(a.latestDate));
+  }, [filteredViewings]);
+
+  // 視聴グループの価値タグ一括更新
+  const handleChangeValueTagViewingGroup = (groupTitle: string, tag: ValueTag) => {
+    const next = viewings.map((v) => (v.title.trim() === groupTitle ? { ...v, valueTag: tag } : v));
+    setViewings(next);
+    saveViewingItems(next);
+  };
+
+  // 視聴グループの評価一括更新
+  const handleUpdateViewingGroupRating = (groupTitle: string, rating: number) => {
+    const next = viewings.map((v) => (v.title.trim() === groupTitle ? { ...v, rating } : v));
+    setViewings(next);
+    saveViewingItems(next);
+  };
+
+  // 視聴グループ削除（全エピソードをゴミ箱へ）
+  const handleDeleteViewingGroup = (groupTitle: string) => {
+    const next = viewings.map((v) => (v.title.trim() === groupTitle ? { ...v, deleted: true } : v));
+    setViewings(next);
+    saveViewingItems(next);
+  };
+
+  // 視聴グループの編集開始
+  const handleStartEditingViewingGroup = (group: {
+    title: string;
+    totalDurationMin: number;
+    notes?: string;
+  }) => {
+    setEditingViewingGroupTitle(group.title);
+    setEditingViewingDuration(group.totalDurationMin);
+    setEditingViewingNotes(group.notes || '');
+  };
+
+  // 視聴グループの編集保存（視聴時間合算値 ＆ 感想）
+  const handleSaveViewingGroupEdit = (groupTitle: string) => {
+    const targetItems = viewings.filter((v) => !v.deleted && v.title.trim() === groupTitle);
+    if (targetItems.length === 0) {
+      setEditingViewingGroupTitle(null);
+      return;
+    }
+
+    const currentTotal = targetItems.reduce((sum, v) => sum + (v.durationMin || 0), 0);
+    const newTotal = Math.max(0, editingViewingDuration);
+    const diff = newTotal - currentTotal;
+    const sorted = [...targetItems].sort((a, b) => b.date.localeCompare(a.date));
+    const latestId = sorted[0].id;
+
+    const next = viewings.map((v) => {
+      if (v.title.trim() !== groupTitle || v.deleted) return v;
+
+      if (sorted.length === 1) {
+        return {
+          ...v,
+          durationMin: newTotal,
+          notes: editingViewingNotes.trim() || undefined,
+        };
+      }
+
+      // 複数エピソードがある場合：最新回に差分を反映、感想も最新回に保存
+      if (v.id === latestId) {
+        return {
+          ...v,
+          durationMin: Math.max(0, (v.durationMin || 0) + diff),
+          notes: editingViewingNotes.trim() || undefined,
+        };
+      }
+
+      return v;
+    });
+
+    setViewings(next);
+    saveViewingItems(next);
+    setEditingViewingGroupTitle(null);
+  };
+
   // 画像URL保存
-  const handleSaveImageUrl = (id: string, isViewing: boolean) => {
+  const handleSaveImageUrl = (idOrTitle: string | null, isViewing: boolean) => {
+    if (!idOrTitle) return;
     if (isViewing) {
-      handleUpdateViewing(id, { imageUrl: editingImageUrl.trim() });
+      const next = viewings.map((v) =>
+        v.id === idOrTitle || v.title.trim() === idOrTitle
+          ? { ...v, imageUrl: editingImageUrl.trim() || undefined }
+          : v
+      );
+      setViewings(next);
+      saveViewingItems(next);
     } else {
-      handleUpdateReceipt(id, { imageUrl: editingImageUrl.trim() });
+      handleUpdateReceipt(idOrTitle, { imageUrl: editingImageUrl.trim() || undefined });
     }
     setEditingItemId(null);
     setEditingImageUrl('');
@@ -1092,99 +1236,271 @@ export default function ValueInventoryTab() {
           ))}
         </div>
       ) : (
-        /* ── 🎬 視聴ロググリッド ── */
+        /* ── 🎬 視聴ロググリッド（同じタイトルは合算・編集対応） ── */
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {filteredViewings.map((item) => (
-            <div
-              key={item.id}
-              className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden flex flex-col transition-all hover:border-[var(--accent)] shadow-sm"
-            >
-              <div className="relative w-full h-44 bg-[var(--bg-card2)] overflow-hidden group">
-                {item.imageUrl ? (
-                  <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover transition-transform group-hover:scale-105" />
-                ) : (
-                  <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-[var(--text-muted)] bg-gradient-to-br from-indigo-950 to-slate-900">
-                    <span className="text-3xl">🎬</span>
-                    <span className="text-xs">{item.platform}</span>
-                  </div>
-                )}
-                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
-                  <select
-                    value={item.valueTag || 'none'}
-                    onChange={(e) => handleChangeValueTagViewing(item.id, e.target.value as ValueTag)}
-                    className="text-[10px] px-2 py-0.5 rounded-md font-bold text-white shadow backdrop-blur cursor-pointer border-0 outline-none"
-                    style={{ backgroundColor: VALUE_TAGS[item.valueTag]?.color || '#94a3b8' }}
-                    title="価値タグを変更（Well-being / Ownership / なし）"
-                  >
-                    <option value="well-being">🌿 Well-being</option>
-                    <option value="ownership">🧭 Ownership</option>
-                    <option value="none">⚪ なし</option>
-                  </select>
-                  <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-black/60 text-white shadow">
-                    {item.platform}
-                  </span>
-                </div>
-                {/* 削除ボタン */}
-                <button
-                  onClick={() => handleDeleteViewing(item.id)}
-                  title="削除（ゴミ箱へ移動）"
-                  className="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg bg-black/60 hover:bg-rose-600 backdrop-blur text-white flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-all shadow"
-                >
-                  🗑
-                </button>
-                {/* 画像編集ボタン */}
-                <button
-                  onClick={() => {
-                    setEditingItemId(item.id);
-                    setEditingImageUrl(item.imageUrl || '');
-                  }}
-                  className="absolute bottom-2.5 right-2.5 text-[11px] px-2 py-1 rounded-lg bg-black/60 backdrop-blur text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                  📷 画像リンク編集
-                </button>
-              </div>
+          {groupedViewings.map((group) => {
+            const isEditing = editingViewingGroupTitle === group.title;
+            const isExpanded = !!expandedViewingGroups[group.title];
+            const hasMultiple = group.items.length > 1;
 
-              <div className="p-4 flex-1 flex flex-col justify-between gap-3">
-                <div className="flex flex-col gap-1.5">
-                  <div className="flex items-center justify-between gap-2 text-xs">
-                    <span className="font-semibold text-sky-600 dark:text-sky-400 flex items-center gap-1">
-                      📅 みた日: {item.date}
+            return (
+              <div
+                key={group.title}
+                className="rounded-2xl border border-[var(--border)] bg-[var(--bg-card)] overflow-hidden flex flex-col transition-all hover:border-[var(--accent)] shadow-sm"
+              >
+                {/* 画像エリア */}
+                <div className="relative w-full h-44 bg-[var(--bg-card2)] overflow-hidden group">
+                  {group.imageUrl ? (
+                    <img
+                      src={group.imageUrl}
+                      alt={group.title}
+                      className="w-full h-full object-cover transition-transform group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-[var(--text-muted)] bg-gradient-to-br from-indigo-950 to-slate-900">
+                      <span className="text-3xl">🎬</span>
+                      <span className="text-xs font-semibold">{group.platform}</span>
+                    </div>
+                  )}
+
+                  {/* 価値バッジ ＆ 媒体バッジ */}
+                  <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
+                    <select
+                      value={group.valueTag || 'none'}
+                      onChange={(e) => handleChangeValueTagViewingGroup(group.title, e.target.value as ValueTag)}
+                      className="text-[10px] px-2 py-0.5 rounded-md font-bold text-white shadow backdrop-blur cursor-pointer border-0 outline-none"
+                      style={{ backgroundColor: VALUE_TAGS[group.valueTag]?.color || '#94a3b8' }}
+                      title="価値タグを変更（Well-being / Ownership / なし）"
+                    >
+                      <option value="well-being">🌿 Well-being</option>
+                      <option value="ownership">🧭 Ownership</option>
+                      <option value="none">⚪ なし</option>
+                    </select>
+                    <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-black/60 text-white shadow">
+                      {group.platform}
                     </span>
-                    <span className="font-bold text-[var(--text-sub)]">{item.durationMin}分</span>
+                    {hasMultiple && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-indigo-500/90 text-white shadow">
+                        全{group.items.length}話
+                      </span>
+                    )}
                   </div>
-                  <h3 className="text-sm font-bold text-[var(--text)] leading-snug line-clamp-2">
-                    {item.title}
-                  </h3>
-                  {item.notes && (
-                    <p className="text-xs text-[var(--text-sub)] bg-[var(--bg-card2)] p-2 rounded-lg leading-relaxed line-clamp-3">
-                      💡 {item.notes}
-                    </p>
+
+                  {/* 右上：削除ボタン */}
+                  <button
+                    onClick={() => handleDeleteViewingGroup(group.title)}
+                    title="この作品/シリーズを削除（ゴミ箱へ移動）"
+                    className="absolute top-2.5 right-2.5 w-7 h-7 rounded-lg bg-black/60 hover:bg-rose-600 backdrop-blur text-white flex items-center justify-center text-xs opacity-0 group-hover:opacity-100 transition-all shadow"
+                  >
+                    🗑
+                  </button>
+
+                  {/* 画像編集ボタン */}
+                  <button
+                    onClick={() => {
+                      setEditingItemId(group.title);
+                      setEditingImageUrl(group.imageUrl || '');
+                    }}
+                    className="absolute bottom-2.5 right-2.5 text-[11px] px-2 py-1 rounded-lg bg-black/60 backdrop-blur text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    📷 画像リンク編集
+                  </button>
+                </div>
+
+                {/* カード本文 */}
+                <div className="p-4 flex-1 flex flex-col justify-between gap-3">
+                  {isEditing ? (
+                    /* ── ✏️ 視聴時間・感想の編集フォーム ── */
+                    <div className="flex flex-col gap-3 py-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-bold text-[var(--accent)] flex items-center gap-1">
+                          ✏️ 視聴時間・感想を編集
+                        </span>
+                        <span className="text-[10px] text-[var(--text-muted)] truncate max-w-[130px]">
+                          {group.title}
+                        </span>
+                      </div>
+
+                      {/* 視聴時間入力 */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-[var(--text-sub)] flex items-center justify-between">
+                          <span>合計視聴時間 (分):</span>
+                          {editingViewingDuration >= 60 && (
+                            <span className="text-[10px] text-[var(--text-muted)] font-normal">
+                              約 {(editingViewingDuration / 60).toFixed(1)} 時間
+                            </span>
+                          )}
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={editingViewingDuration}
+                          onChange={(e) => setEditingViewingDuration(parseInt(e.target.value, 10) || 0)}
+                          className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] font-bold"
+                        />
+                      </div>
+
+                      {/* 感想メモ入力 */}
+                      <div className="flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-[var(--text-sub)]">感想・メモ:</label>
+                        <textarea
+                          rows={3}
+                          value={editingViewingNotes}
+                          onChange={(e) => setEditingViewingNotes(e.target.value)}
+                          placeholder="ストーリーの感想、学んだこと、気付きなど"
+                          className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] resize-none"
+                        />
+                      </div>
+
+                      {/* ボタン */}
+                      <div className="flex items-center justify-end gap-2 pt-1 border-t border-[var(--border)]">
+                        <button
+                          type="button"
+                          onClick={() => setEditingViewingGroupTitle(null)}
+                          className="text-xs px-3 py-1.5 rounded-lg bg-[var(--bg-card2)] text-[var(--text-sub)] hover:text-[var(--text)]"
+                        >
+                          キャンセル
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleSaveViewingGroupEdit(group.title)}
+                          className="text-xs px-4 py-1.5 rounded-xl font-bold bg-[var(--accent)] text-white shadow"
+                        >
+                          保存する
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    /* ── 通常表示 ── */
+                    <div className="flex flex-col gap-2">
+                      {/* 日時 ＆ 視聴時間合算値 */}
+                      <div className="flex items-center justify-between gap-2 text-xs">
+                        <span className="font-semibold text-sky-600 dark:text-sky-400 flex items-center gap-1">
+                          📅 {hasMultiple ? `${group.earliestDate} 〜 ${group.latestDate}` : group.latestDate}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold text-[var(--text)] bg-[var(--bg-card2)] px-2 py-0.5 rounded-md border border-[var(--border)]">
+                            合計 {group.totalDurationMin}分
+                            {group.totalDurationMin >= 60 && (
+                              <span className="text-[10px] text-[var(--text-muted)] ml-1 font-normal">
+                                ({(group.totalDurationMin / 60).toFixed(1)}h)
+                              </span>
+                            )}
+                          </span>
+                          <button
+                            onClick={() => handleStartEditingViewingGroup(group)}
+                            title="視聴時間や感想を編集"
+                            className="text-[11px] p-1 rounded hover:bg-[var(--bg-card2)] text-[var(--text-muted)] hover:text-[var(--accent)] transition-colors"
+                          >
+                            ✏️
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* タイトル */}
+                      <h3 className="text-sm font-bold text-[var(--text)] leading-snug">
+                        {group.title}
+                      </h3>
+
+                      {/* 感想メモ */}
+                      {group.notes ? (
+                        <div
+                          onClick={() => handleStartEditingViewingGroup(group)}
+                          title="クリックして感想・時間を編集"
+                          className="group/notes cursor-pointer text-xs text-[var(--text-sub)] bg-[var(--bg-card2)] p-2.5 rounded-xl leading-relaxed relative hover:border-[var(--accent)] border border-transparent transition-all"
+                        >
+                          <p className="line-clamp-3">💡 {group.notes}</p>
+                          <span className="absolute bottom-1 right-1 text-[10px] text-[var(--accent)] opacity-0 group-hover/notes:opacity-100 transition-opacity">
+                            ✏️ 編集
+                          </span>
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => handleStartEditingViewingGroup(group)}
+                          className="text-left text-xs text-[var(--text-muted)] hover:text-[var(--accent)] hover:bg-[var(--bg-card2)] p-2 rounded-xl border border-dashed border-[var(--border)] transition-colors"
+                        >
+                          + 感想・メモを追加
+                        </button>
+                      )}
+
+                      {/* 複数回ある場合：内訳アコーディオン */}
+                      {hasMultiple && (
+                        <div className="pt-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setExpandedViewingGroups((prev) => ({
+                                ...prev,
+                                [group.title]: !prev[group.title],
+                              }))
+                            }
+                            className="text-[11px] text-[var(--accent)] font-medium hover:underline flex items-center gap-1"
+                          >
+                            <span>{isExpanded ? '▲' : '▼'}</span>
+                            <span>全 {group.items.length} 回の視聴履歴</span>
+                          </button>
+
+                          {isExpanded && (
+                            <div className="mt-2 flex flex-col gap-1 max-h-36 overflow-y-auto pr-1 border-t border-[var(--border)] pt-2">
+                              {group.items.map((ep) => (
+                                <div
+                                  key={ep.id}
+                                  className="flex items-center justify-between text-[11px] p-1.5 rounded-lg bg-[var(--bg-card2)]/70 text-[var(--text-sub)]"
+                                >
+                                  <span className="font-mono text-[var(--text-muted)]">{ep.date}</span>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-semibold">{ep.durationMin}分</span>
+                                    <button
+                                      onClick={() => handleDeleteViewing(ep.id)}
+                                      title="この回のみ削除"
+                                      className="text-[10px] text-rose-500 hover:text-rose-400"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* 下部操作バー（評価 ＆ 編集ボタン） */}
+                  {!isEditing && (
+                    <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[11px] text-[var(--text-muted)] mr-0.5">評価:</span>
+                        {[1, 2, 3, 4].map((star) => (
+                          <button
+                            key={star}
+                            onClick={() => handleUpdateViewingGroupRating(group.title, star)}
+                            title={`評価: ${star}/4`}
+                            className={`text-sm px-0.5 transition-transform hover:scale-125 ${
+                              star <= (group.rating ?? 0) ? 'text-amber-500' : 'text-slate-300 dark:text-slate-700'
+                            }`}
+                          >
+                            ★
+                          </button>
+                        ))}
+                        <span className="text-[10px] text-[var(--text-muted)] ml-1">
+                          {group.rating ? `${group.rating}/4` : '未評価'}
+                        </span>
+                      </div>
+
+                      <button
+                        onClick={() => handleStartEditingViewingGroup(group)}
+                        className="text-[11px] px-2.5 py-1 rounded-lg bg-[var(--bg-card2)] text-[var(--text-sub)] hover:text-[var(--text)] hover:border-[var(--accent)] border border-transparent font-medium transition-colors flex items-center gap-1"
+                      >
+                        ✏️ 編集
+                      </button>
+                    </div>
                   )}
                 </div>
-
-                <div className="pt-2 border-t border-[var(--border)] flex items-center justify-between">
-                  <span className="text-xs text-[var(--text-muted)]">評価:</span>
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4].map((star) => (
-                      <button
-                        key={star}
-                        onClick={() => handleUpdateViewing(item.id, { rating: star })}
-                        title={`評価: ${star}/4`}
-                        className={`text-sm px-0.5 transition-transform hover:scale-125 ${
-                          star <= (item.rating ?? 0) ? 'text-amber-500' : 'text-slate-300 dark:text-slate-700'
-                        }`}
-                      >
-                        ★
-                      </button>
-                    ))}
-                    <span className="text-[11px] text-[var(--text-sub)] ml-1 font-semibold">
-                      {item.rating ? `${item.rating}/4` : '未評価'}
-                    </span>
-                  </div>
-                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
