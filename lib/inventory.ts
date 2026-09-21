@@ -29,9 +29,10 @@ export const INVENTORY_CATEGORIES: { id: InventoryCategory; label: string; icon:
 ];
 
 export const VALUE_TAGS: Record<ValueTag, { label: string; color: string; bg: string; icon: string }> = {
-  'well-being': { label: 'Well-being', color: '#0284c7', bg: '#0284c718', icon: '🌿' },
-  'ownership': { label: 'Ownership', color: '#059669', bg: '#05966918', icon: '🧭' },
+  'well-being': { label: 'Well-being', color: '#0ea5e9', bg: '#0ea5e918', icon: '🌿' },
+  'ownership': { label: 'Ownership', color: '#10b981', bg: '#10b98118', icon: '🧭' },
   'neutral': { label: '日常維持', color: '#64748b', bg: '#64748b18', icon: '⚖️' },
+  'none': { label: 'なし', color: '#94a3b8', bg: '#94a3b818', icon: '⚪' },
 };
 
 /** 4段階評価のラベル定義 */

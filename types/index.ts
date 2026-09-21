@@ -92,7 +92,7 @@ export interface LibraryItem {
 /* ── 価値・持ち物（インベントリ・支出・視聴ログ） ─────────────── */
 
 export type InventoryCategory = 'book' | 'clothes' | 'gadget';
-export type ValueTag = 'well-being' | 'ownership' | 'neutral';
+export type ValueTag = 'well-being' | 'ownership' | 'neutral' | 'none';
 
 export type ClothingSeason = 'all' | 'summer' | 'winter' | 'spring_autumn';
 export type ClothingCategory = 'tops' | 'bottoms' | 'outer' | 'shoes' | 'bag' | 'sports_inner';

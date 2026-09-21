@@ -18,7 +18,7 @@ import {
   CLOTHING_CATEGORIES,
 } from '@/lib/inventory';
 import { tooltipStyle } from '@/lib/vizPalette';
-import type { ReceiptItem, ViewingItem, InventoryCategory, ClothingSeason, ClothingCategory } from '@/types';
+import type { ReceiptItem, ViewingItem, InventoryCategory, ClothingSeason, ClothingCategory, ValueTag } from '@/types';
 
 type SubTab = InventoryCategory | 'viewing';
 
@@ -35,6 +35,78 @@ export default function ValueInventoryTab() {
   const [showDailyLogModal, setShowDailyLogModal] = useState(false);
   const [dailyLogInput, setDailyLogInput] = useState('');
   const [matchSummary, setMatchSummary] = useState<MatchResult | null>(null);
+
+  // 手動追加モーダル用状態
+  const [showManualModal, setShowManualModal] = useState(false);
+  const [manualCategory, setManualCategory] = useState<'viewing' | 'book' | 'clothes' | 'gadget'>('viewing');
+  const [manualTitle, setManualTitle] = useState('');
+  const [manualDate, setManualDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [manualPlatformOrStore, setManualPlatformOrStore] = useState('U-NEXT');
+  const [manualDurationOrAmount, setManualDurationOrAmount] = useState('90');
+  const [manualValueTag, setManualValueTag] = useState<ValueTag>('none');
+  const [manualRating, setManualRating] = useState<number>(4);
+  const [manualNotes, setManualNotes] = useState('');
+  const [manualImageUrl, setManualImageUrl] = useState('');
+
+  // 価値タグの切り替えハンドラ
+  const handleChangeValueTagReceipt = (id: string, tag: ValueTag) => {
+    handleUpdateReceipt(id, { valueTag: tag });
+  };
+  const handleChangeValueTagViewing = (id: string, tag: ValueTag) => {
+    handleUpdateViewing(id, { valueTag: tag });
+  };
+
+  // 手動追加の実行
+  const handleCreateManualItem = () => {
+    if (!manualTitle.trim()) {
+      alert('タイトルまたは品名を入力してください');
+      return;
+    }
+
+    if (manualCategory === 'viewing') {
+      const duration = parseInt(manualDurationOrAmount.replace(/[^\d]/g, ''), 10) || 90;
+      const newItem: ViewingItem = {
+        id: `v-manual-${Date.now()}`,
+        date: manualDate,
+        title: manualTitle.trim(),
+        platform: (manualPlatformOrStore.trim() || 'U-NEXT') as any,
+        durationMin: duration,
+        category: manualTitle.includes('サッカー') || manualPlatformOrStore.includes('U-NEXT') ? 'soccer' : 'movie',
+        valueTag: manualValueTag,
+        notes: manualNotes.trim() || undefined,
+        imageUrl: manualImageUrl.trim() || undefined,
+        rating: manualRating,
+      };
+      const next = [newItem, ...viewings];
+      setViewings(next);
+      saveViewingItems(next);
+    } else {
+      const amount = parseInt(manualDurationOrAmount.replace(/[^\d]/g, ''), 10) || 0;
+      const newItem: ReceiptItem = {
+        id: `rc-manual-${Date.now()}`,
+        date: manualDate,
+        store: manualPlatformOrStore.trim() || 'その他',
+        name: manualTitle.trim(),
+        amount,
+        category: manualCategory,
+        valueTag: manualValueTag,
+        season: manualCategory === 'clothes' ? 'all' : undefined,
+        notes: manualNotes.trim() || undefined,
+        imageUrl: manualImageUrl.trim() || undefined,
+        rating: manualRating,
+      };
+      const next = [newItem, ...receipts];
+      setReceipts(next);
+      saveReceiptItems(next);
+    }
+
+    // リセット
+    setManualTitle('');
+    setManualNotes('');
+    setManualImageUrl('');
+    setShowManualModal(false);
+    alert('アイテムを追加しました！');
+  };
 
   // シーズン変更ハンドラ
   const handleChangeSeason = (id: string, season: ClothingSeason) => {
@@ -387,6 +459,16 @@ export default function ValueInventoryTab() {
           />
           <button
             onClick={() => {
+              setManualCategory(activeSubTab);
+              setShowManualModal(true);
+            }}
+            className="text-xs px-3 py-1.5 rounded-xl font-bold bg-[var(--accent)] text-white hover:opacity-90 transition-opacity whitespace-nowrap flex items-center gap-1 shadow-sm"
+          >
+            <span>➕</span>
+            <span>手入力で追加</span>
+          </button>
+          <button
+            onClick={() => {
               setShowDailyLogModal(true);
               setMatchSummary(null);
             }}
@@ -517,6 +599,202 @@ export default function ValueInventoryTab() {
       )}
 
       
+      
+      {/* ── ➕ 手動アイテム追加モーダル（サッカー試合・読書・服・家電） ── */}
+      {showManualModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 w-full max-w-md flex flex-col gap-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-2.5">
+              <h3 className="text-sm font-bold text-[var(--text)] flex items-center gap-1.5">
+                <span>➕</span>
+                <span>アイテムを手動で追加</span>
+              </h3>
+              <button
+                onClick={() => setShowManualModal(false)}
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--text)]"
+              >
+                ✕ 閉じる
+              </button>
+            </div>
+
+            {/* カテゴリ選択 */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--text-sub)]">カテゴリ:</label>
+              <div className="grid grid-cols-4 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => { setManualCategory('viewing'); setManualPlatformOrStore('U-NEXT'); setManualDurationOrAmount('90'); }}
+                  className={`text-xs py-1.5 rounded-lg font-medium transition-all ${
+                    manualCategory === 'viewing' ? 'bg-[var(--accent)] text-white font-bold' : 'bg-[var(--bg-card2)] text-[var(--text-sub)]'
+                  }`}
+                >
+                  🎬 視聴
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setManualCategory('book'); setManualPlatformOrStore('Amazon'); setManualDurationOrAmount('1500'); }}
+                  className={`text-xs py-1.5 rounded-lg font-medium transition-all ${
+                    manualCategory === 'book' ? 'bg-[var(--accent)] text-white font-bold' : 'bg-[var(--bg-card2)] text-[var(--text-sub)]'
+                  }`}
+                >
+                  📚 読書
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setManualCategory('clothes'); setManualPlatformOrStore('ユニクロ'); setManualDurationOrAmount('3990'); }}
+                  className={`text-xs py-1.5 rounded-lg font-medium transition-all ${
+                    manualCategory === 'clothes' ? 'bg-[var(--accent)] text-white font-bold' : 'bg-[var(--bg-card2)] text-[var(--text-sub)]'
+                  }`}
+                >
+                  👕 洋服
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setManualCategory('gadget'); setManualPlatformOrStore('Amazon'); setManualDurationOrAmount('5000'); }}
+                  className={`text-xs py-1.5 rounded-lg font-medium transition-all ${
+                    manualCategory === 'gadget' ? 'bg-[var(--accent)] text-white font-bold' : 'bg-[var(--bg-card2)] text-[var(--text-sub)]'
+                  }`}
+                >
+                  🔌 家電
+                </button>
+              </div>
+            </div>
+
+            {/* タイトル / 品名 */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--text-sub)]">
+                {manualCategory === 'viewing' ? '作品名・試合名 (例: U-NEXT サッカーCL アトレティコ戦):' : '品名・タイトル:'}
+              </label>
+              <input
+                type="text"
+                placeholder={manualCategory === 'viewing' ? '例: サッカー日本代表戦' : '例: 新しいTシャツ'}
+                value={manualTitle}
+                onChange={(e) => setManualTitle(e.target.value)}
+                className="text-xs p-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
+              />
+            </div>
+
+            {/* 日付 ＆ 時間/金額 */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-[var(--text-sub)]">
+                  {manualCategory === 'viewing' ? 'みた日:' : '買った日:'}
+                </label>
+                <input
+                  type="date"
+                  value={manualDate}
+                  onChange={(e) => setManualDate(e.target.value)}
+                  className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-[var(--text-sub)]">
+                  {manualCategory === 'viewing' ? '視聴時間 (分):' : '金額 (円):'}
+                </label>
+                <input
+                  type="number"
+                  placeholder={manualCategory === 'viewing' ? '90' : '3000'}
+                  value={manualDurationOrAmount}
+                  onChange={(e) => setManualDurationOrAmount(e.target.value)}
+                  className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
+                />
+              </div>
+            </div>
+
+            {/* 媒体/店舗 ＆ 価値タグ */}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-[var(--text-sub)]">
+                  {manualCategory === 'viewing' ? '媒体 (U-NEXT/TVer等):' : '店舗/購入先:'}
+                </label>
+                <input
+                  type="text"
+                  placeholder={manualCategory === 'viewing' ? 'U-NEXT' : 'Amazon'}
+                  value={manualPlatformOrStore}
+                  onChange={(e) => setManualPlatformOrStore(e.target.value)}
+                  className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
+                />
+              </div>
+
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-[var(--text-sub)]">人生価値タグ:</label>
+                <select
+                  value={manualValueTag}
+                  onChange={(e) => setManualValueTag(e.target.value as ValueTag)}
+                  className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] font-semibold"
+                >
+                  <option value="none">⚪ なし（未分類）</option>
+                  <option value="well-being">🌿 Well-being</option>
+                  <option value="ownership">🧭 Ownership</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 評価（★1〜4） */}
+            <div className="flex items-center justify-between py-1">
+              <span className="text-xs font-semibold text-[var(--text-sub)]">評価 (1〜4):</span>
+              <div className="flex items-center gap-1">
+                {[1, 2, 3, 4].map((star) => (
+                  <button
+                    key={star}
+                    type="button"
+                    onClick={() => setManualRating(star)}
+                    className={`text-lg transition-transform hover:scale-125 ${
+                      star <= manualRating ? 'text-amber-500' : 'text-slate-300 dark:text-slate-700'
+                    }`}
+                  >
+                    ★
+                  </button>
+                ))}
+                <span className="text-xs text-[var(--text-muted)] ml-1">{manualRating}/4</span>
+              </div>
+            </div>
+
+            {/* 感想メモ */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--text-sub)]">感想・メモ:</label>
+              <textarea
+                rows={2}
+                placeholder="戦術の深掘りになった、リフレッシュできた等"
+                value={manualNotes}
+                onChange={(e) => setManualNotes(e.target.value)}
+                className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] resize-none"
+              />
+            </div>
+
+            {/* 画像URL（任意） */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--text-muted)]">画像URL（任意）:</label>
+              <input
+                type="url"
+                placeholder="https://..."
+                value={manualImageUrl}
+                onChange={(e) => setManualImageUrl(e.target.value)}
+                className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={() => setShowManualModal(false)}
+                className="text-xs px-3 py-1.5 rounded-lg bg-[var(--bg-card2)] text-[var(--text-sub)]"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleCreateManualItem}
+                className="text-xs px-5 py-2 rounded-xl font-bold bg-[var(--accent)] text-white shadow"
+              >
+                追加する
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── 📝 Daily Log 感想自動反映モーダル ── */}
       {showDailyLogModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -659,17 +937,22 @@ export default function ValueInventoryTab() {
                   </div>
                 )}
 
-                {/* 価値バッジ ＆ シーズンバッジ */}
-                <div className="absolute top-2.5 left-2.5 flex flex-wrap items-center gap-1">
-                  <span
-                    className="text-[10px] px-2 py-0.5 rounded-md font-bold shadow"
-                    style={{ color: '#fff', backgroundColor: VALUE_TAGS[item.valueTag].color }}
+                {/* 価値バッジ（直接変更可能） ＆ シーズンバッジ */}
+                <div className="absolute top-2.5 left-2.5 flex flex-wrap items-center gap-1.5 z-10">
+                  <select
+                    value={item.valueTag || 'none'}
+                    onChange={(e) => handleChangeValueTagReceipt(item.id, e.target.value as ValueTag)}
+                    className="text-[10px] px-2 py-0.5 rounded-md font-bold text-white shadow backdrop-blur cursor-pointer border-0 outline-none"
+                    style={{ backgroundColor: VALUE_TAGS[item.valueTag]?.color || '#94a3b8' }}
+                    title="価値タグを変更（Well-being / Ownership / なし）"
                   >
-                    {VALUE_TAGS[item.valueTag].icon} {VALUE_TAGS[item.valueTag].label}
-                  </span>
+                    <option value="well-being">🌿 Well-being</option>
+                    <option value="ownership">🧭 Ownership</option>
+                    <option value="none">⚪ なし</option>
+                  </select>
                   {item.category === 'clothes' && item.season && (
                     <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-black/60 text-white backdrop-blur shadow">
-                      {item.season === 'winter' ? '❄️ 冬' : item.season === 'summer' ? '☀️ 夏' : '🔄 オールシーズン'}
+                      {item.season === 'winter' ? '❄️ 冬' : item.season === 'summer' ? '☀️ 夏' : '🔄 オール'}
                     </span>
                   )}
                 </div>
@@ -800,13 +1083,18 @@ export default function ValueInventoryTab() {
                     <span className="text-xs">{item.platform}</span>
                   </div>
                 )}
-                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5">
-                  <span
-                    className="text-[10px] px-2 py-0.5 rounded-md font-bold shadow"
-                    style={{ color: '#fff', backgroundColor: VALUE_TAGS[item.valueTag].color }}
+                <div className="absolute top-2.5 left-2.5 flex items-center gap-1.5 z-10">
+                  <select
+                    value={item.valueTag || 'none'}
+                    onChange={(e) => handleChangeValueTagViewing(item.id, e.target.value as ValueTag)}
+                    className="text-[10px] px-2 py-0.5 rounded-md font-bold text-white shadow backdrop-blur cursor-pointer border-0 outline-none"
+                    style={{ backgroundColor: VALUE_TAGS[item.valueTag]?.color || '#94a3b8' }}
+                    title="価値タグを変更（Well-being / Ownership / なし）"
                   >
-                    {VALUE_TAGS[item.valueTag].icon} {VALUE_TAGS[item.valueTag].label}
-                  </span>
+                    <option value="well-being">🌿 Well-being</option>
+                    <option value="ownership">🧭 Ownership</option>
+                    <option value="none">⚪ なし</option>
+                  </select>
                   <span className="text-[10px] px-2 py-0.5 rounded-md font-bold bg-black/60 text-white shadow">
                     {item.platform}
                   </span>
