@@ -276,7 +276,7 @@ export default function ValueInventoryTab() {
 
   // 視聴ログのインライン編集用状態
   const [editingViewingGroupTitle, setEditingViewingGroupTitle] = useState<string | null>(null);
-  const [editingViewingDuration, setEditingViewingDuration] = useState<number>(0);
+  const [editingViewingDuration, setEditingViewingDuration] = useState<string>('0');
   const [editingViewingNotes, setEditingViewingNotes] = useState<string>('');
 
   // 複数エピソードのアコーディオン展開状態
@@ -381,7 +381,7 @@ export default function ValueInventoryTab() {
     notes?: string;
   }) => {
     setEditingViewingGroupTitle(group.title);
-    setEditingViewingDuration(group.totalDurationMin);
+    setEditingViewingDuration(String(group.totalDurationMin));
     setEditingViewingNotes(group.notes || '');
   };
 
@@ -394,7 +394,8 @@ export default function ValueInventoryTab() {
     }
 
     const currentTotal = targetItems.reduce((sum, v) => sum + (v.durationMin || 0), 0);
-    const newTotal = Math.max(0, editingViewingDuration);
+    const parsedDuration = parseInt(editingViewingDuration.replace(/[^\d]/g, ''), 10);
+    const newTotal = isNaN(parsedDuration) ? 0 : Math.max(0, parsedDuration);
     const diff = newTotal - currentTotal;
     const sorted = [...targetItems].sort((a, b) => b.date.localeCompare(a.date));
     const latestId = sorted[0].id;
@@ -1325,18 +1326,23 @@ export default function ValueInventoryTab() {
                       <div className="flex flex-col gap-1">
                         <label className="text-xs font-semibold text-[var(--text-sub)] flex items-center justify-between">
                           <span>合計視聴時間 (分):</span>
-                          {editingViewingDuration >= 60 && (
+                          {parseInt(editingViewingDuration || '0', 10) >= 60 && (
                             <span className="text-[10px] text-[var(--text-muted)] font-normal">
-                              約 {(editingViewingDuration / 60).toFixed(1)} 時間
+                              約 {(parseInt(editingViewingDuration || '0', 10) / 60).toFixed(1)} 時間
                             </span>
                           )}
                         </label>
                         <input
-                          type="number"
-                          min="0"
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
                           value={editingViewingDuration}
-                          onChange={(e) => setEditingViewingDuration(parseInt(e.target.value, 10) || 0)}
-                          className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] font-bold"
+                          onChange={(e) => {
+                            const val = e.target.value.replace(/[^\d]/g, '');
+                            setEditingViewingDuration(val);
+                          }}
+                          placeholder="例: 90"
+                          className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] font-bold focus:outline-none focus:border-[var(--accent)]"
                         />
                       </div>
 
@@ -1449,11 +1455,27 @@ export default function ValueInventoryTab() {
                                 >
                                   <span className="font-mono text-[var(--text-muted)]">{ep.date}</span>
                                   <div className="flex items-center gap-2">
-                                    <span className="font-semibold">{ep.durationMin}分</span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        const val = prompt('この回の視聴時間（分）を入力してください:', String(ep.durationMin));
+                                        if (val !== null) {
+                                          const num = parseInt(val.replace(/[^\d]/g, ''), 10);
+                                          if (!isNaN(num)) {
+                                            handleUpdateViewing(ep.id, { durationMin: Math.max(0, num) });
+                                          }
+                                        }
+                                      }}
+                                      title="この回の視聴時間を個別に変更"
+                                      className="font-semibold text-sky-600 dark:text-sky-400 hover:underline flex items-center gap-0.5"
+                                    >
+                                      <span>{ep.durationMin}分</span>
+                                      <span className="text-[10px] opacity-60">✏️</span>
+                                    </button>
                                     <button
                                       onClick={() => handleDeleteViewing(ep.id)}
                                       title="この回のみ削除"
-                                      className="text-[10px] text-rose-500 hover:text-rose-400"
+                                      className="text-[10px] text-rose-500 hover:text-rose-400 p-0.5"
                                     >
                                       ✕
                                     </button>
