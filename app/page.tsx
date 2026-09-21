@@ -14,6 +14,7 @@ import HomeTab from '@/components/tabs/HomeTab';
 import HabitsTab from '@/components/tabs/HabitsTab';
 import TargetTab from '@/components/tabs/TargetTab';
 import LibraryTab from '@/components/tabs/LibraryTab';
+import ValueInventoryTab from '@/components/tabs/ValueInventoryTab';
 import { useTheme } from '@/components/ThemeProvider';
 import { BodyMetric, DailyNutrition, MealEntry } from '@/types';
 
@@ -25,10 +26,10 @@ const PERIOD_OPTIONS = [
 
 const TABS = [
   { id: 'home', label: 'ホーム', icon: '🏠' },
+  { id: 'value', label: '価値・持ち物', icon: '💎' },
   { id: 'habits', label: '習慣', icon: '🔥' },
-  { id: 'target', label: '目標', icon: '🎯' },
   { id: 'health', label: '健康', icon: '🏃' },
-  { id: 'library', label: '本・映画', icon: '📚' },
+  { id: 'money', label: '資産管理', icon: '💰', href: 'https://money-dashboard-iota-three.vercel.app' },
 ] as const;
 type Tab = typeof TABS[number]['id'];
 
@@ -184,10 +185,8 @@ export default function Dashboard() {
       <HomeTab metrics={metrics} nutrition={nutrition} onNavigate={(t) => setActiveTab(t as Tab)} />
     ) : activeTab === 'habits' ? (
       <HabitsTab />
-    ) : activeTab === 'target' ? (
-      <TargetTab />
-    ) : activeTab === 'library' ? (
-      <LibraryTab />
+    ) : activeTab === 'value' ? (
+      <ValueInventoryTab />
     ) : (
       <HealthTab
         metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock}
@@ -220,20 +219,40 @@ export default function Dashboard() {
           </div>
 
           <nav className="flex-1 px-3 flex flex-col gap-1">
-            {TABS.map((tab) => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-colors"
-                style={{
-                  background: activeTab === tab.id ? 'var(--accent)' : 'transparent',
-                  color: activeTab === tab.id ? '#fff' : 'var(--text-sub)',
-                }}
-              >
-                <span>{tab.icon}</span>
-                <span>{tab.label}</span>
-              </button>
-            ))}
+            {TABS.map((tab) => {
+              if ('href' in tab && tab.href) {
+                return (
+                  <a
+                    key={tab.id}
+                    href={tab.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-colors hover:bg-[var(--bg-card2)]"
+                    style={{ color: 'var(--text-sub)' }}
+                  >
+                    <span className="flex items-center gap-2">
+                      <span>{tab.icon}</span>
+                      <span>{tab.label}</span>
+                    </span>
+                    <span className="text-xs text-[var(--text-muted)]">↗</span>
+                  </a>
+                );
+              }
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as Tab)}
+                  className="flex items-center gap-2 px-3 py-2.5 rounded-xl text-sm font-medium text-left transition-colors"
+                  style={{
+                    background: activeTab === tab.id ? 'var(--accent)' : 'transparent',
+                    color: activeTab === tab.id ? '#fff' : 'var(--text-sub)',
+                  }}
+                >
+                  <span>{tab.icon}</span>
+                  <span>{tab.label}</span>
+                </button>
+              );
+            })}
           </nav>
 
           {/* Period selector */}
@@ -326,17 +345,34 @@ export default function Dashboard() {
         {/* Bottom navigation */}
         <nav className="fixed bottom-0 left-0 right-0 flex border-t z-20"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-          {TABS.map((tab) => (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className="flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors min-w-0"
-              style={{ color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-muted)' }}
-            >
-              <span className="text-lg leading-none">{tab.icon}</span>
-              <span className="truncate w-full text-center">{tab.label}</span>
-            </button>
-          ))}
+          {TABS.map((tab) => {
+            if ('href' in tab && tab.href) {
+              return (
+                <a
+                  key={tab.id}
+                  href={tab.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors min-w-0"
+                  style={{ color: 'var(--text-muted)' }}
+                >
+                  <span className="text-lg leading-none">{tab.icon}</span>
+                  <span className="truncate w-full text-center">{tab.label} ↗</span>
+                </a>
+              );
+            }
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id as Tab)}
+                className="flex-1 flex flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition-colors min-w-0"
+                style={{ color: activeTab === tab.id ? 'var(--accent)' : 'var(--text-muted)' }}
+              >
+                <span className="text-lg leading-none">{tab.icon}</span>
+                <span className="truncate w-full text-center">{tab.label}</span>
+              </button>
+            );
+          })}
         </nav>
       </div>
     </div>

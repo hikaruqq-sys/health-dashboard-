@@ -6,6 +6,7 @@ import ProgressRing from '../ProgressRing';
 import { useLifeData } from '../LifeDataProvider';
 import { saveTarget } from '@/lib/lifeStore';
 import { CATEGORY_COLORS, QUARTER_LABELS } from '@/data/targets2026';
+import { TARGET_EVIDENCES } from '@/data/receiptSeedData';
 import { quarterOf } from '@/lib/period';
 import { STATUS } from '@/lib/vizPalette';
 import type { Quarter, TargetRow, TargetStatus } from '@/types';
@@ -65,7 +66,6 @@ export default function TargetTab() {
               percent={total === 0 ? 0 : (done / total) * 100}
               center={`${done}`}
               sub={`/ ${total}`}
-              // 「今どの四半期か」は色ではなくラベルで示す（色は状態の意味に取っておく）
               label={`Q${currentQ}` === q.toUpperCase() ? `${q.toUpperCase()} ← 今` : q.toUpperCase()}
               color="var(--accent)"
             />
@@ -79,54 +79,62 @@ export default function TargetTab() {
             <span style={{ width: 10, height: 10, borderRadius: 3, background: STATUS.critical }} />× 未達成
           </span>
           <span className="flex items-center gap-1.5">
-            <span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--border)' }} />— 未評価
+            <span style={{ width: 10, height: 10, borderRadius: 3, background: 'var(--border)' }} />– 未評価
           </span>
-          <span className="ml-auto">現在 Q{currentQ}</span>
+          <span className="ml-auto text-[11px] text-[var(--accent)] font-medium">
+            💡 項目名をタップすると日々のログ・エビデンスを展開します
+          </span>
         </div>
       </Card>
 
-      {/* ── カテゴリ別の内訳 ── */}
+      {/* ── カテゴリ別の達成状況 ── */}
       <Card title="📊 カテゴリ別の達成">
-        <div className="flex flex-col gap-3">
-          {Array.from(byCategory.entries()).map(([category, rows]) => {
-            const done = rows.reduce(
-              (n, r) => n + QUARTERS.filter((q) => r.status[q] === 'done').length, 0
-            );
-            const evaluated = rows.reduce(
-              (n, r) => n + QUARTERS.filter((q) => r.status[q] !== undefined).length, 0
-            );
-            const pct = evaluated === 0 ? 0 : Math.round((done / evaluated) * 100);
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          {Array.from(byCategory.entries()).map(([cat, rows]) => {
+            let done = 0;
+            let totalEvaluated = 0;
+            rows.forEach((r) => {
+              QUARTERS.forEach((q) => {
+                if (r.status[q] === 'done') {
+                  done += 1;
+                  totalEvaluated += 1;
+                } else if (r.status[q] === 'miss') {
+                  totalEvaluated += 1;
+                }
+              });
+            });
+            const rate = totalEvaluated === 0 ? 0 : Math.round((done / totalEvaluated) * 100);
+            const color = CATEGORY_COLORS[cat] ?? 'var(--accent)';
+
             return (
-              <div key={category} className="flex items-center gap-3">
-                <span className="text-xs w-24 flex-shrink-0 truncate" style={{ color: 'var(--text-sub)' }}>
-                  {category}
-                </span>
-                <div className="flex-1 h-2.5 rounded-full overflow-hidden" style={{ background: 'var(--bg-card2)' }}>
+              <div
+                key={cat}
+                className="p-3 rounded-xl border flex flex-col gap-2"
+                style={{ borderColor: 'var(--border)', background: 'var(--bg-card2)' }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold" style={{ color: 'var(--text)' }}>
+                    {cat}
+                  </span>
+                  <span className="text-xs tabular-nums" style={{ color: 'var(--text-muted)' }}>
+                    {done}/{totalEvaluated} ({rate}%)
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--border)' }}>
                   <div
-                    className="h-full rounded-full"
-                    style={{ width: `${pct}%`, background: CATEGORY_COLORS[category] ?? 'var(--accent)' }}
+                    className="h-full rounded-full transition-all"
+                    style={{ width: `${rate}%`, background: color }}
                   />
                 </div>
-                <span className="text-xs tabular-nums w-20 text-right flex-shrink-0" style={{ color: 'var(--text-muted)' }}>
-                  {done}/{evaluated || '—'} ({pct}%)
-                </span>
               </div>
             );
           })}
         </div>
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          ○×を付けた四半期のうち達成した割合。未評価の四半期は分母に入れていません。
-        </p>
       </Card>
 
-      {/* ── 目標グリッド（Notion の Target 表） ── */}
+      {/* ── 2026 Target 表 ── */}
       <Card title="📋 2026 Target">
-        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-          ○/× をタップすると「達成 → 未達成 → 未評価」の順に切り替わります。項目名をタップで全文表示。
-        </p>
-
-        {/* PC: 表形式 */}
-        {/* 四半期の説明文が潰れて縦書きにならないよう、幅を確保して横スクロールさせる */}
+        {/* デスクトップ */}
         <div className="hidden md:block overflow-x-auto">
           <table className="text-xs" style={{ borderCollapse: 'collapse', minWidth: 1040 }}>
             <thead>
@@ -134,84 +142,183 @@ export default function TargetTab() {
                 <th className="text-left font-medium py-2 pr-3" style={{ color: 'var(--text-muted)' }}>カテゴリ</th>
                 <th className="text-left font-medium py-2 pr-3" style={{ color: 'var(--text-muted)' }}>項目</th>
                 {QUARTERS.map((q) => (
-                  <th key={q} className="text-left font-medium py-2 px-2"
-                    style={{ color: 'var(--text-muted)', minWidth: 200 }}>
+                  <th key={q} className="text-left font-medium py-2 px-2" style={{ color: 'var(--text-muted)', minWidth: 200 }}>
                     {QUARTER_LABELS[q]}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {targets.map((row) => (
-                <tr key={row.id} style={{ borderTop: '1px solid var(--border)' }}>
-                  <td className="py-2.5 pr-3 align-top whitespace-nowrap">
-                    <span className="inline-flex items-center gap-1.5" style={{ color: 'var(--text-sub)' }}>
-                      <span style={{
-                        width: 8, height: 8, borderRadius: 2,
-                        background: CATEGORY_COLORS[row.category] ?? 'var(--accent)',
-                      }} />
-                      {row.category}
-                    </span>
-                  </td>
-                  <td className="py-2.5 pr-3 align-top font-medium whitespace-nowrap" style={{ color: 'var(--text)' }}>
-                    {row.item}
-                  </td>
-                  {QUARTERS.map((q) => (
-                    <td key={q} className="py-2.5 px-2 align-top" style={{ minWidth: 200 }}>
-                      <div className="flex items-start gap-2">
-                        <StatusButton status={row.status[q]} onClick={() => toggle(row, q)} />
-                        <span className="leading-relaxed" style={{ color: 'var(--text-sub)' }}>{row[q]}</span>
-                      </div>
-                    </td>
-                  ))}
-                </tr>
-              ))}
+              {targets.map((row) => {
+                const isOpen = openId === row.id;
+                const evidence = TARGET_EVIDENCES.find((e) => e.item === row.item || e.targetId === row.id);
+
+                return (
+                  <>
+                    <tr
+                      key={row.id}
+                      className="cursor-pointer hover:bg-[var(--bg-card2)]/50 transition-colors"
+                      style={{ borderTop: '1px solid var(--border)' }}
+                      onClick={() => setOpenId(isOpen ? null : row.id)}
+                    >
+                      <td className="py-2.5 pr-3 align-top whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1.5" style={{ color: 'var(--text-sub)' }}>
+                          <span
+                            style={{
+                              width: 8,
+                              height: 8,
+                              borderRadius: 2,
+                              background: CATEGORY_COLORS[row.category] ?? 'var(--accent)',
+                            }}
+                          />
+                          {row.category}
+                        </span>
+                      </td>
+                      <td className="py-2.5 pr-3 align-top font-bold whitespace-nowrap" style={{ color: 'var(--text)' }}>
+                        <span className="flex items-center gap-1">
+                          {row.item}
+                          <span className="text-[10px] text-[var(--accent)] font-normal">
+                            {isOpen ? '▲' : '▼'}
+                          </span>
+                        </span>
+                      </td>
+                      {QUARTERS.map((q) => (
+                        <td
+                          key={q}
+                          className="py-2.5 px-2 align-top"
+                          style={{ minWidth: 200 }}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-start gap-2">
+                            <StatusButton status={row.status[q]} onClick={() => toggle(row, q)} />
+                            <span className="leading-relaxed" style={{ color: 'var(--text-sub)' }}>
+                              {row[q]}
+                            </span>
+                          </div>
+                        </td>
+                      ))}
+                    </tr>
+
+                    {/* エビデンス・日々のログ展開行 */}
+                    {isOpen && evidence && (
+                      <tr key={`${row.id}-ev`} className="bg-[var(--bg-card2)]/70">
+                        <td colSpan={6} className="p-3 border-b border-[var(--border)]">
+                          <div className="flex flex-col gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-bold text-[var(--accent)]">
+                                📝 日々のログ・支出・視聴から紐づくエビデンス ({row.item})
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                              {(['q1', 'q2', 'q3'] as const).map((qKey) => (
+                                <div key={qKey} className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] flex flex-col gap-1">
+                                  <span className="text-[11px] font-semibold text-[var(--text-sub)]">
+                                    {qKey.toUpperCase()} の裏付け実績:
+                                  </span>
+                                  <ul className="text-xs text-[var(--text-sub)] space-y-1 list-disc list-inside">
+                                    {evidence.quarterEvidence[qKey]?.map((ev, idx) => (
+                                      <li key={idx} className="leading-relaxed">{ev}</li>
+                                    )) ?? <li className="text-[var(--text-muted)] list-none">ログなし</li>}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </>
+                );
+              })}
             </tbody>
           </table>
         </div>
 
-        {/* モバイル: 項目ごとのカード */}
+        {/* モバイル */}
         <div className="md:hidden flex flex-col gap-2">
           {targets.map((row) => {
             const open = openId === row.id;
+            const evidence = TARGET_EVIDENCES.find((e) => e.item === row.item || e.targetId === row.id);
+
             return (
-              <div key={row.id} className="rounded-xl border overflow-hidden"
-                style={{ borderColor: 'var(--border)', background: 'var(--bg-card2)' }}>
+              <div
+                key={row.id}
+                className="rounded-xl border overflow-hidden"
+                style={{ borderColor: 'var(--border)', background: 'var(--bg-card2)' }}
+              >
                 <button
                   onClick={() => setOpenId(open ? null : row.id)}
                   className="w-full flex items-center gap-2 px-3 py-2.5 text-left"
                 >
-                  <span style={{
-                    width: 8, height: 8, borderRadius: 2, flexShrink: 0,
-                    background: CATEGORY_COLORS[row.category] ?? 'var(--accent)',
-                  }} />
-                  <span className="text-sm font-medium flex-1 truncate" style={{ color: 'var(--text)' }}>{row.item}</span>
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 2,
+                      flexShrink: 0,
+                      background: CATEGORY_COLORS[row.category] ?? 'var(--accent)',
+                    }}
+                  />
+                  <span className="text-sm font-medium flex-1 truncate" style={{ color: 'var(--text)' }}>
+                    {row.item}
+                  </span>
                   <span className="flex gap-1 flex-shrink-0">
                     {QUARTERS.map((q) => (
-                      <span key={q} className="text-[10px] w-4 h-4 rounded flex items-center justify-center"
+                      <span
+                        key={q}
+                        className="text-[10px] w-4 h-4 rounded flex items-center justify-center"
                         style={{
                           background:
-                            row.status[q] === 'done' ? STATUS.good
-                            : row.status[q] === 'miss' ? STATUS.critical
-                            : 'var(--border)',
+                            row.status[q] === 'done'
+                              ? STATUS.good
+                              : row.status[q] === 'miss'
+                              ? STATUS.critical
+                              : 'var(--border)',
                           color: row.status[q] ? '#fff' : 'var(--text-muted)',
-                        }}>
+                        }}
+                      >
                         {row.status[q] === 'done' ? '○' : row.status[q] === 'miss' ? '×' : '–'}
                       </span>
                     ))}
                   </span>
                 </button>
+
                 {open && (
-                  <div className="px-3 pb-3 flex flex-col gap-2">
+                  <div className="px-3 pb-3 flex flex-col gap-3 border-t border-[var(--border)] pt-2.5">
                     {QUARTERS.map((q) => (
                       <div key={q} className="flex items-start gap-2">
                         <StatusButton status={row.status[q]} onClick={() => toggle(row, q)} />
                         <div className="flex-1">
-                          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{QUARTER_LABELS[q]}</p>
-                          <p className="text-xs" style={{ color: 'var(--text-sub)' }}>{row[q]}</p>
+                          <p className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                            {QUARTER_LABELS[q]}
+                          </p>
+                          <p className="text-xs" style={{ color: 'var(--text-sub)' }}>
+                            {row[q]}
+                          </p>
                         </div>
                       </div>
                     ))}
+
+                    {/* モバイルでのエビデンス */}
+                    {evidence && (
+                      <div className="p-2.5 rounded-lg bg-[var(--bg-card)] border border-[var(--border)] mt-1">
+                        <span className="text-[11px] font-bold text-[var(--accent)] mb-1 block">
+                          📝 日々のログ・実績エビデンス
+                        </span>
+                        <div className="space-y-2 text-xs text-[var(--text-sub)]">
+                          {(['q1', 'q2', 'q3'] as const).map((qKey) => (
+                            <div key={qKey}>
+                              <span className="font-semibold text-[10px] text-[var(--text-muted)] block">{qKey.toUpperCase()}:</span>
+                              <ul className="list-disc list-inside space-y-0.5">
+                                {evidence.quarterEvidence[qKey]?.map((ev, i) => (
+                                  <li key={i}>{ev}</li>
+                                ))}
+                              </ul>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

@@ -88,3 +88,55 @@ export interface LibraryItem {
   note?: string;
   coverUrl?: string;
 }
+
+/* ── 価値・持ち物（インベントリ・支出・視聴ログ） ─────────────── */
+
+export type InventoryCategory = 'book' | 'clothes' | 'gadget';
+export type ValueTag = 'well-being' | 'ownership' | 'neutral';
+
+export type ClothingSeason = 'all' | 'summer' | 'winter' | 'spring_autumn';
+export type ClothingCategory = 'tops' | 'bottoms' | 'outer' | 'shoes' | 'bag' | 'sports_inner';
+
+export interface ReceiptItem {
+  id: string;
+  date: string;          // YYYY-MM-DD (購入日)
+  store: string;
+  name: string;
+  amount: number;
+  category: InventoryCategory;
+  valueTag: ValueTag;
+  subCategory?: string;
+  season?: ClothingSeason;            // 夏 / 冬 / オールシーズン / 春秋
+  clothingCategory?: ClothingCategory; // トップス / ボトムス / アウター / 靴 / バッグ
+  notes?: string;
+  imageUrl?: string;      // 画像リンク
+  rating?: number;        // 1-4 段階評価
+  isFinished?: boolean;   // 読了・使い切り
+  isRecommended?: boolean;// 人に薦めたいか
+  deleted?: boolean;      // 削除フラグ
+}
+
+export interface ViewingItem {
+  id: string;
+  date: string;          // YYYY-MM-DD (視聴日)
+  title: string;
+  platform: 'Netflix' | 'Prime Video' | 'U-NEXT' | 'TVer' | 'NHK' | 'Other';
+  durationMin: number;
+  category: 'anime' | 'movie' | 'drama' | 'soccer' | 'variety' | 'documentary';
+  valueTag: ValueTag;
+  notes?: string;
+  imageUrl?: string;      // 画像リンク
+  rating?: number;        // 1-4 段階評価
+  deleted?: boolean;      // 削除フラグ
+}
+
+export interface ValueSummary {
+  month: string;         // YYYY-MM
+  wbAmount: number;
+  osAmount: number;
+  neutralAmount: number;
+  totalAmount: number;
+  wbMinutes: number;
+  osMinutes: number;
+  totalMinutes: number;
+}
