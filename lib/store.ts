@@ -1,4 +1,6 @@
 import { Redis } from '@upstash/redis';
+import type { ReceiptItem, ViewingItem } from '@/types';
+import type { UserOverride } from './inventory';
 
 export interface WidgetWeight {
   date: string;
@@ -19,7 +21,17 @@ export interface WidgetData {
   updatedAt: string;
 }
 
+export interface CloudInventoryData {
+  receipts: ReceiptItem[];
+  viewings: ViewingItem[];
+  overrides?: Record<string, UserOverride>;
+  updatedAt: string;
+  updatedBy?: string;
+  version: number;
+}
+
 const KEY = 'health:widget';
+const INVENTORY_KEY = 'life:inventory:data';
 
 function getRedis(): Redis | null {
   const url =
@@ -40,4 +52,16 @@ export async function loadWidgetData(): Promise<WidgetData | null> {
   const redis = getRedis();
   if (!redis) return null;
   return (await redis.get<WidgetData>(KEY)) ?? null;
+}
+
+export async function saveCloudInventoryData(data: CloudInventoryData): Promise<void> {
+  const redis = getRedis();
+  if (!redis) throw new Error('KV store not configured');
+  await redis.set(INVENTORY_KEY, data);
+}
+
+export async function loadCloudInventoryData(): Promise<CloudInventoryData | null> {
+  const redis = getRedis();
+  if (!redis) return null;
+  return (await redis.get<CloudInventoryData>(INVENTORY_KEY)) ?? null;
 }

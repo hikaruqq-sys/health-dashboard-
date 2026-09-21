@@ -235,7 +235,63 @@ export function guessSeasonAndClothingCategory(name: string): { season: Clothing
   return { season, clothingCategory };
 }
 
-/** 品名・店名から自動カテゴリ＆価値判定を推論（辞書強化版） */
+/**
+ * 生活費・食費・日用品・交通費・固定費のブラックリスト判定
+ * （今回の価値ダッシュボードで対象としない日常消費を自動検知して除外）
+ */
+export function isExcludedLifeExpense(name: string, store: string): boolean {
+  const combined = `${name} ${store}`.toLowerCase();
+
+  // 食費・コンビニ・スーパー・外食・カフェ・飲食全般
+  const foodKeywords = [
+    'セブン', 'seven', 'ローソン', 'lawson', 'ファミリーマート', 'ファミマ', 'familymart', 'ミニストップ', 'デイリーヤマザキ',
+    'スーパー', 'イオン', '西友', 'ライフ', '成城石井', '業務スーパー', 'オオゼキ', 'ヤオコー', 'まいばすけっと', 'マルエツ', 'サミット', 'いなげや', '東急ストア',
+    'スターバックス', 'スタバ', 'starbucks', 'ドトール', 'doutor', 'タリーズ', 'tullys', 'コメダ', 'サンマルク', 'ベローチェ',
+    'マクドナルド', 'マック', 'mcdonald', 'モスバーガー', 'ケンタッキー', 'kfc', 'すき家', '吉野家', '松屋', 'サイゼリヤ', 'デニーズ', 'ガスト', '大戸屋', 'やよい軒',
+    'ランチ', 'ディナー', 'カフェ', 'cafe', '居酒屋', '酒場', 'バル', '食堂', 'ベーカリー', 'パン屋', '弁当', 'うどん', 'そば', 'ラーメン', '寿司', '焼肉',
+    'ubereats', 'uber eats', '出前館', 'menu', '自販機', '飲食', '惣菜', '精肉', '鮮魚', '青果', '食品', '飲料', 'おにぎり', 'サンドイッチ'
+  ];
+
+  // 日用品・ドラッグストア・100円均一
+  const dailyKeywords = [
+    'マツモトキヨシ', 'マツキヨ', 'スギ薬局', 'ウエルシア', 'ツルハ', 'サンドラッグ', 'トモズ', 'ココカラファイン', 'クリエイト',
+    'ドラッグ', '薬局', 'カインズ', 'コーナン', 'ニトリ', '無印良品（食品）', 'ダイソー', 'セリア', 'キャンドゥ', '100円', '洗剤', 'ティッシュ'
+  ];
+
+  // 交通・固定費・公共料金・医療・金融
+  const utilityKeywords = [
+    'suica', 'pasmo', 'icoca', 'jr', '東京メトロ', '地下鉄', 'メトロ', '鉄道', 'バス', 'タクシー', 'taxi', 'goタクシー',
+    'eneos', '出光', 'コスモ', 'ガソリン', 'etc', '高速道路', '駐車場', 'タイムズ',
+    '東京電力', '関西電力', '中部電力', '東京ガス', '大阪ガス', '水道局', 'ntt', 'docomo', 'au', 'softbank', 'ソフトバンク',
+    '家賃', '管理費', 'クリニック', '病院', '医院', '歯科', '眼科', '薬代', '処方', '調剤', '保険', '国税', '都税', '区役所', '住民税', 'atm', '利息', '振込手数料', '年会費'
+  ];
+
+  return [...foodKeywords, ...dailyKeywords, ...utilityKeywords].some((kw) => combined.includes(kw));
+}
+
+/** Gemini支出仕分けプロンプト定数 */
+export const GEMINI_IMPORT_PROMPT = `以下の支出CSVデータから、私の「人生価値・持ち物ダッシュボード」に登録すべきアイテムだけを抽出し、指定のフォーマットで出力してください。
+
+【除外ルール（一切出力しないでください）】
+・食費全般（コンビニ、スーパー、外食、ランチ、カフェ、UberEats、自販機など）
+・日用品・消耗品（ドラッグストア、洗剤、ティッシュなど）
+・固定費・交通費（家賃、光熱費、通信費、Suicaチャージ、電車、タクシーなど）
+・医療費、税金、手数料など
+
+【抽出対象カテゴリ】
+1. 👕 洋服（衣類、靴、バッグ、インナー、スポーツウェアなど）
+2. 🔌 家電・ギア（ガジェット、カメラ機材、PC周辺機器、清掃器具、アウトドア用品など）
+3. 📚 読書（書籍、Kindle、専門書、漫画など）
+4. 🎬 視聴・エンタメ（映画、チケット、動画サブスクなど）
+
+【出力フォーマット（カンマ区切りCSV、ヘッダーなし）】
+日付,店舗/媒体名,品名/作品名,金額(または分),価値タグ(Well-being/Ownership/なし)
+※価値タグは、自己投資・探求・体験なら「Ownership」、心地よさ・リフレッシュ・生活の質なら「Well-being」、どちらでもなければ「なし」としてください。
+
+【支出CSVデータ】
+`;
+
+/** 品名・店名から自動カテゴリ＆価値判定を推論（除外フィルタ＆辞書強化版） */
 export function guessCategoryAndValue(name: string, store: string): { category: InventoryCategory; valueTag: ValueTag } {
   const n = name.toLowerCase();
   const s = store.toLowerCase();
@@ -410,17 +466,22 @@ export function computeValueSummaries(receipts: ReceiptItem[], viewings: Viewing
 export interface ParsedImportResult {
   receipts: ReceiptItem[];
   viewings: ViewingItem[];
+  skippedCount: number;
+  skippedSamples: string[];
 }
 
 /**
  * テキストまたはCSVから、購入アイテム(ReceiptItem)と視聴ログ(ViewingItem)を自動判別してパース
  * 形式1 (購入): 日付,店舗名,商品名,金額
  * 形式2 (視聴): 日付,媒体(Prime Video/Netflix等),作品名,時間(分),価値タグ(任意)
+ * ※生活費・食費・日用品・交通費・公共料金などは自動でスキップ（除外）されます。
  */
 export function parseImportCSV(csvText: string): ParsedImportResult {
   const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
   const receipts: ReceiptItem[] = [];
   const viewings: ViewingItem[] = [];
+  const skippedSamples: string[] = [];
+  let skippedCount = 0;
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -475,7 +536,15 @@ export function parseImportCSV(csvText: string): ParsedImportResult {
         rating: 4,
       });
     } else {
-      // 購入アイテムとしてパース
+      // 購入アイテム：生活費・食費・日用品・交通費を自動スキップ判定
+      if (isExcludedLifeExpense(nameOrTitle, storeOrPlatform)) {
+        skippedCount++;
+        if (skippedSamples.length < 5) {
+          skippedSamples.push(`${storeOrPlatform} - ${nameOrTitle}`);
+        }
+        continue;
+      }
+
       const { category, valueTag } = guessCategoryAndValue(nameOrTitle, storeOrPlatform);
       const { season, clothingCategory } = guessSeasonAndClothingCategory(nameOrTitle);
 
@@ -494,5 +563,5 @@ export function parseImportCSV(csvText: string): ParsedImportResult {
     }
   }
 
-  return { receipts, viewings };
+  return { receipts, viewings, skippedCount, skippedSamples };
 }

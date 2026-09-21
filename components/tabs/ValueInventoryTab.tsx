@@ -11,6 +11,7 @@ import {
   loadViewingItems,
   saveViewingItems,
   saveItemOverride,
+  loadUserOverrides,
   parseReceiptCSV,
   parseImportCSV,
   computeMonthlyTrends,
@@ -18,6 +19,7 @@ import {
   VALUE_TAGS,
   CLOTHING_SEASONS,
   CLOTHING_CATEGORIES,
+  GEMINI_IMPORT_PROMPT,
 } from '@/lib/inventory';
 import { tooltipStyle } from '@/lib/vizPalette';
 import type { ReceiptItem, ViewingItem, InventoryCategory, ClothingSeason, ClothingCategory, ValueTag } from '@/types';
@@ -32,6 +34,70 @@ export default function ValueInventoryTab() {
   const [csvText, setCsvText] = useState('');
   const [showImport, setShowImport] = useState(false);
   const [showDeletedSection, setShowDeletedSection] = useState(false);
+
+  // クラウド同期（MacBook ⇆ iPhone）用状態
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
+  const [cloudUpdatedAt, setCloudUpdatedAt] = useState<string | null>(null);
+
+  // クラウドへデータを保存（マスター保存）
+  const handlePushToCloud = async (overrideReceipts?: ReceiptItem[], overrideViewings?: ViewingItem[]) => {
+    setCloudSyncStatus('syncing');
+    try {
+      const payload = {
+        receipts: overrideReceipts || receipts,
+        viewings: overrideViewings || viewings,
+        overrides: loadUserOverrides(),
+        updatedBy: typeof window !== 'undefined' && navigator.userAgent.includes('Macintosh') ? 'MacBook' : 'iPhone/Mobile',
+      };
+      const res = await fetch('/api/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json();
+      if (json.ok) {
+        setCloudSyncStatus('synced');
+        setCloudUpdatedAt(json.data.updatedAt);
+        alert('✅ クラウドDBへマスターデータを保存しました！\n別の端末（iPhoneなど）で開いた時に「☁️ クラウドから同期」を押すと、全く同じデータが反映されます。');
+      } else {
+        setCloudSyncStatus('error');
+        alert('クラウドへの保存に失敗しました: ' + (json.error || '不明なエラー'));
+      }
+    } catch (e: any) {
+      setCloudSyncStatus('error');
+      alert('クラウド同期エラー: ' + e.message);
+    }
+  };
+
+  // クラウドから最新データを取得・同期
+  const handlePullFromCloud = async () => {
+    setCloudSyncStatus('syncing');
+    try {
+      const res = await fetch('/api/inventory');
+      const json = await res.json();
+      if (json.ok && json.data) {
+        const cloudData = json.data;
+        if (Array.isArray(cloudData.receipts) && Array.isArray(cloudData.viewings)) {
+          setReceipts(cloudData.receipts);
+          setViewings(cloudData.viewings);
+          saveReceiptItems(cloudData.receipts);
+          saveViewingItems(cloudData.viewings);
+          if (cloudData.overrides) {
+            localStorage.setItem('life_user_overrides_v1', JSON.stringify(cloudData.overrides));
+          }
+          setCloudSyncStatus('synced');
+          setCloudUpdatedAt(cloudData.updatedAt);
+          alert(`✅ クラウドから最新データを同期しました！\n・購入アイテム: ${cloudData.receipts.length} 件\n・視聴ログ: ${cloudData.viewings.length} 件\n(更新元: ${cloudData.updatedBy || 'クラウド'})`);
+        }
+      } else {
+        setCloudSyncStatus('idle');
+        alert('クラウドにまだ保存されたデータがありません。まずMacBookで「💻 このMacのデータをマスターとして保存」を実行してください。');
+      }
+    } catch (e: any) {
+      setCloudSyncStatus('error');
+      alert('クラウド取得エラー: ' + e.message);
+    }
+  };
 
   // Daily Log 反映用
   const [showDailyLogModal, setShowDailyLogModal] = useState(false);
@@ -135,10 +201,23 @@ export default function ValueInventoryTab() {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingImageUrl, setEditingImageUrl] = useState('');
 
-  // 初期ロード（過去データ・ユーザー画像オーバーライドを確実に反映）
+  // 初期ロード（過去データ・ユーザー画像オーバーライドを確実に反映 ＆ クラウドステータス確認）
   useEffect(() => {
     setReceipts(loadReceiptItems());
     setViewings(loadViewingItems());
+
+    // クラウドの更新状況を確認
+    fetch('/api/inventory')
+      .then((res) => res.json())
+      .then((json) => {
+        if (json.ok && json.data) {
+          setCloudUpdatedAt(json.data.updatedAt);
+          setCloudSyncStatus('synced');
+        }
+      })
+      .catch((e) => {
+        console.warn('Cloud status check skipped', e);
+      });
   }, []);
 
   // 月別推移（時系列）の計算
@@ -215,51 +294,57 @@ export default function ValueInventoryTab() {
     saveViewingItems(next);
   };
 
-  // ファイルインポート（購入・視聴ログ両対応）
+  // ファイルインポート（購入・視聴ログ両対応 ＆ 食費・生活費除外）
   const handleFileImport = async (files: File[]) => {
     if (files.length === 0) return;
     const file = files[0];
     const text = await file.text();
-    const { receipts: newR, viewings: newV } = parseImportCSV(text);
+    const { receipts: newR, viewings: newV, skippedCount } = parseImportCSV(text);
     if (newR.length === 0 && newV.length === 0) {
-      alert('有効なCSVデータを読み込めませんでした。形式を確認してください。');
+      alert(`有効なアイテムを読み込めませんでした。形式を確認してください。${skippedCount > 0 ? `\n（※生活費・食費・日用品 ${skippedCount} 件が安全にスキップされました）` : ''}`);
       return;
     }
+    let updatedReceipts = receipts;
+    let updatedViewings = viewings;
     if (newR.length > 0) {
-      const nextR = [...newR, ...receipts];
-      setReceipts(nextR);
-      saveReceiptItems(nextR);
+      updatedReceipts = [...newR, ...receipts];
+      setReceipts(updatedReceipts);
+      saveReceiptItems(updatedReceipts);
     }
     if (newV.length > 0) {
-      const nextV = [...newV, ...viewings];
-      setViewings(nextV);
-      saveViewingItems(nextV);
+      updatedViewings = [...newV, ...viewings];
+      setViewings(updatedViewings);
+      saveViewingItems(updatedViewings);
     }
     setShowImport(false);
-    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件`);
+    const skipMsg = skippedCount > 0 ? `\n・生活費・食費・日用品・交通費（スキップ除外）: ${skippedCount} 件` : '';
+    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件${skipMsg}\n\n※他端末と同期するには、上の「💻 このMacのデータをマスターとして保存」を押してください。`);
   };
 
-  // テキストインポート（購入・視聴ログ両対応）
+  // テキストインポート（購入・視聴ログ両対応 ＆ 食費・生活費除外）
   const handleImportCSV = () => {
     if (!csvText.trim()) return;
-    const { receipts: newR, viewings: newV } = parseImportCSV(csvText);
+    const { receipts: newR, viewings: newV, skippedCount } = parseImportCSV(csvText);
     if (newR.length === 0 && newV.length === 0) {
-      alert('有効なCSVデータを読み込めませんでした。形式を確認してください。');
+      alert(`有効なアイテムを読み込めませんでした。形式を確認してください。${skippedCount > 0 ? `\n（※生活費・食費・日用品 ${skippedCount} 件が安全にスキップされました）` : ''}`);
       return;
     }
+    let updatedReceipts = receipts;
+    let updatedViewings = viewings;
     if (newR.length > 0) {
-      const nextR = [...newR, ...receipts];
-      setReceipts(nextR);
-      saveReceiptItems(nextR);
+      updatedReceipts = [...newR, ...receipts];
+      setReceipts(updatedReceipts);
+      saveReceiptItems(updatedReceipts);
     }
     if (newV.length > 0) {
-      const nextV = [...newV, ...viewings];
-      setViewings(nextV);
-      saveViewingItems(nextV);
+      updatedViewings = [...newV, ...viewings];
+      setViewings(updatedViewings);
+      saveViewingItems(updatedViewings);
     }
     setCsvText('');
     setShowImport(false);
-    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件`);
+    const skipMsg = skippedCount > 0 ? `\n・生活費・食費・日用品・交通費（スキップ除外）: ${skippedCount} 件` : '';
+    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件${skipMsg}\n\n※他端末と同期するには、上の「💻 このMacのデータをマスターとして保存」を押してください。`);
   };
 
   // 削除済みアイテム一覧
@@ -498,6 +583,51 @@ export default function ValueInventoryTab() {
 
   return (
     <div className="flex flex-col gap-5">
+      {/* ── ☁️ クラウド同期コントロールバー（MacBook ⇆ iPhone リアルタイム共有） ── */}
+      <div className="flex flex-wrap items-center justify-between gap-3 p-3.5 rounded-2xl bg-[var(--bg-card)] border border-[var(--border)] shadow-sm">
+        <div className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center text-base">
+            ☁️
+          </div>
+          <div className="flex flex-col">
+            <span className="text-xs font-bold text-[var(--text)] flex items-center gap-1.5">
+              <span>クラウド同期（MacBook ⇆ iPhone）</span>
+              {cloudSyncStatus === 'syncing' && <span className="text-[10px] text-amber-500 font-semibold animate-pulse">● 同期中...</span>}
+              {cloudSyncStatus === 'synced' && <span className="text-[10px] text-emerald-500 font-semibold">● 接続完了</span>}
+              {cloudSyncStatus === 'error' && <span className="text-[10px] text-rose-500 font-semibold">● エラー</span>}
+            </span>
+            <span className="text-[11px] text-[var(--text-muted)]">
+              {cloudUpdatedAt
+                ? `最終クラウド同期: ${new Date(cloudUpdatedAt).toLocaleString('ja-JP')}（同一データを全端末で共有中）`
+                : 'MacBookのデータをマスターとしてクラウドに保存し、iPhoneでも閲覧・同期できます'}
+            </span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => handlePushToCloud()}
+            disabled={cloudSyncStatus === 'syncing'}
+            className="text-xs px-3.5 py-2 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white shadow transition-all flex items-center gap-1.5"
+            title="現在のこのMacのデータをクラウドのマスターデータとして保存します"
+          >
+            <span>💻</span>
+            <span>このMacのデータをマスターとして保存</span>
+          </button>
+          <button
+            type="button"
+            onClick={handlePullFromCloud}
+            disabled={cloudSyncStatus === 'syncing'}
+            className="text-xs px-3.5 py-2 rounded-xl font-semibold bg-[var(--bg-card2)] hover:bg-[var(--accent)] text-[var(--text)] hover:text-white border border-[var(--border)] transition-all flex items-center gap-1.5"
+            title="クラウドDBから最新データを読み込みます（iPhoneでの読み込み時に使用）"
+          >
+            <span>🔄</span>
+            <span>クラウドから同期</span>
+          </button>
+        </div>
+      </div>
+
       {/* ── 月別推移グラフ（支出金額 ＆ 視聴時間：複合グラフ） ── */}
       <Card
         title="💎 人生価値の月別推移（支出金額 ＆ 視聴時間）"
@@ -759,48 +889,71 @@ export default function ValueInventoryTab() {
             </button>
           }
         >
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-            <div className="flex flex-col gap-2">
-              <span className="text-xs font-bold text-[var(--text)] flex items-center gap-1.5">
-                📁 ファイルで取り込む (.csv)
-              </span>
-              <FileDropZone
-                label="CSVファイルを選択またはドロップ"
-                hint="日付,店舗名,商品名,金額 のファイルを自動仕分け"
-                onFiles={handleFileImport}
-              />
+          <div className="flex flex-col gap-3 pt-1">
+            {/* 🛡️ 自動除外セーフティ説明 */}
+            <div className="p-2.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-[var(--text-sub)] flex items-start gap-2">
+              <span className="text-base leading-none">🛡️</span>
+              <p className="leading-relaxed">
+                <strong className="text-emerald-600 dark:text-emerald-400 font-bold">生活費自動スキップ機能が有効です：</strong>
+                コンビニ、スーパー、外食、カフェ、ドラッグストア、日用品、Suica、公共料金などは自動で検知して安全に除外されます。洋服や読書に混ざる心配はありません。
+              </p>
             </div>
 
-            <div className="flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-[var(--text)]">📝 テキスト貼り付けで取り込む</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const prompt = `# 役割\nあなたはAmazon Prime Videoの視聴履歴データ抽出エキスパートです。\n提示されるAmazonプライムの視聴履歴テキストを解析し、ダッシュボード取り込み専用のCSV形式で出力してください。\n\n# 出力形式\n日付(YYYY/MM/DD),Prime Video,作品タイトル,推定時間(分),価値(Well-being または Ownership または なし)\n\n# ルール\n1. 各行に1エピソードまたは1作品を出力。\n2. 推定時間: アニメ・ドラマ1話は45分、映画は100分、バラエティ1話は50分。\n3. 余計な挨拶やコードブロック等の装飾は一切入れず、CSVテキストのみ出力。\n\n# 出力例\n2025/06/22,Prime Video,バチェラー・ジャパン シーズン６,50,Well-being\n2025/06/01,Prime Video,アプレンティス：ドナルド・トランプの創り方,100,Ownership\n2025/05/26,Prime Video,アンナチュラル,45,Well-being`;
-                    navigator.clipboard.writeText(prompt);
-                    alert('Amazon Prime Video用 Geminiプロンプトをクリップボードにコピーしました！Geminiに貼り付けて履歴テキストを渡してください。');
-                  }}
-                  className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-bold hover:bg-amber-500 hover:text-white transition-colors"
-                >
-                  📋 Prime用Geminiプロンプトをコピー
-                </button>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="flex flex-col gap-2">
+                <span className="text-xs font-bold text-[var(--text)] flex items-center gap-1.5">
+                  📁 ファイルで取り込む (.csv)
+                </span>
+                <FileDropZone
+                  label="CSVファイルを選択またはドロップ"
+                  hint="日付,店舗名,商品名,金額 のファイルを自動仕分け"
+                  onFiles={handleFileImport}
+                />
               </div>
-              <textarea
-                rows={5}
-                value={csvText}
-                onChange={(e) => setCsvText(e.target.value)}
-                placeholder="2025/06/22,Prime Video,バチェラー・ジャパン シーズン６,50,Well-being&#10;2026/08/10,Amazon,Insta360 Ace Pro 2,58300"
-                className="text-xs font-mono p-3 rounded-2xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] flex-1 resize-none"
-              />
-              <div className="flex justify-end">
-                <button
-                  onClick={handleImportCSV}
-                  disabled={!csvText.trim()}
-                  className="text-xs px-4 py-2 rounded-xl font-bold bg-[var(--accent)] text-white disabled:opacity-50 transition-opacity"
-                >
-                  テキストから自動仕分け取り込み
-                </button>
+
+              <div className="flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-1.5">
+                  <span className="text-xs font-bold text-[var(--text)]">📝 テキスト貼り付けで取り込む</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(GEMINI_IMPORT_PROMPT);
+                        alert('【家計簿・支出CSV用 Geminiプロンプト】をコピーしました！\nGeminiに貼り付けてカードや家計簿のCSVテキストを渡してください。');
+                      }}
+                      className="text-[10px] px-2 py-0.5 rounded-md bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20 font-bold hover:bg-indigo-500 hover:text-white transition-colors"
+                    >
+                      📋 支出用Geminiプロンプト
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const prompt = `# 役割\nあなたはAmazon Prime Videoの視聴履歴データ抽出エキスパートです。\n提示されるAmazonプライムの視聴履歴テキストを解析し、ダッシュボード取り込み専用のCSV形式で出力してください。\n\n# 出力形式\n日付(YYYY/MM/DD),Prime Video,作品タイトル,推定時間(分),価値(Well-being または Ownership または なし)\n\n# ルール\n1. 各行に1エピソードまたは1作品を出力。\n2. 推定時間: アニメ・ドラマ1話は45分、映画は100分、バラエティ1話は50分。\n3. 余計な挨拶やコードブロック等の装飾は一切入れず、CSVテキストのみ出力。\n\n# 出力例\n2025/06/22,Prime Video,バチェラー・ジャパン シーズン６,50,Well-being\n2025/06/01,Prime Video,アプレンティス：ドナルド・トランプの創り方,100,Ownership\n2025/05/26,Prime Video,アンナチュラル,45,Well-being`;
+                        navigator.clipboard.writeText(prompt);
+                        alert('【Amazon Prime Video用 Geminiプロンプト】をコピーしました！\nGeminiに貼り付けて履歴テキストを渡してください。');
+                      }}
+                      className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-bold hover:bg-amber-500 hover:text-white transition-colors"
+                    >
+                      📋 Prime用プロンプト
+                    </button>
+                  </div>
+                </div>
+                <textarea
+                  rows={5}
+                  value={csvText}
+                  onChange={(e) => setCsvText(e.target.value)}
+                  placeholder="2025/06/22,Prime Video,バチェラー・ジャパン シーズン６,50,Well-being&#10;2026/08/10,Amazon,Insta360 Ace Pro 2,58300"
+                  className="text-xs font-mono p-3 rounded-2xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] flex-1 resize-none"
+                />
+                <div className="flex justify-end">
+                  <button
+                    onClick={handleImportCSV}
+                    disabled={!csvText.trim()}
+                    className="text-xs px-4 py-2 rounded-xl font-bold bg-[var(--accent)] text-white disabled:opacity-50 transition-opacity"
+                  >
+                    テキストから自動仕分け取り込み
+                  </button>
+                </div>
               </div>
             </div>
           </div>
