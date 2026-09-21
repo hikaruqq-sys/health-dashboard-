@@ -11,6 +11,7 @@ import {
   loadViewingItems,
   saveViewingItems,
   parseReceiptCSV,
+  parseImportCSV,
   computeMonthlyTrends,
   INVENTORY_CATEGORIES,
   VALUE_TAGS,
@@ -197,37 +198,51 @@ export default function ValueInventoryTab() {
     saveViewingItems(next);
   };
 
-  // ファイルインポート
+  // ファイルインポート（購入・視聴ログ両対応）
   const handleFileImport = async (files: File[]) => {
     if (files.length === 0) return;
     const file = files[0];
     const text = await file.text();
-    const newItems = parseReceiptCSV(text);
-    if (newItems.length === 0) {
-      alert('有効なCSVデータを読み込めませんでした。(日付,店舗名,商品名,金額 の形式を確認してください)');
+    const { receipts: newR, viewings: newV } = parseImportCSV(text);
+    if (newR.length === 0 && newV.length === 0) {
+      alert('有効なCSVデータを読み込めませんでした。形式を確認してください。');
       return;
     }
-    const next = [...newItems, ...receipts];
-    setReceipts(next);
-    saveReceiptItems(next);
+    if (newR.length > 0) {
+      const nextR = [...newR, ...receipts];
+      setReceipts(nextR);
+      saveReceiptItems(nextR);
+    }
+    if (newV.length > 0) {
+      const nextV = [...newV, ...viewings];
+      setViewings(nextV);
+      saveViewingItems(nextV);
+    }
     setShowImport(false);
-    alert(`${file.name} から ${newItems.length} 件のアイテムを自動仕分けして取り込みました！`);
+    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件`);
   };
 
-  // テキストインポート
+  // テキストインポート（購入・視聴ログ両対応）
   const handleImportCSV = () => {
     if (!csvText.trim()) return;
-    const newItems = parseReceiptCSV(csvText);
-    if (newItems.length === 0) {
-      alert('有効なCSVデータを読み込めませんでした。(日付,店舗名,商品名,金額 の形式を確認してください)');
+    const { receipts: newR, viewings: newV } = parseImportCSV(csvText);
+    if (newR.length === 0 && newV.length === 0) {
+      alert('有効なCSVデータを読み込めませんでした。形式を確認してください。');
       return;
     }
-    const next = [...newItems, ...receipts];
-    setReceipts(next);
-    saveReceiptItems(next);
+    if (newR.length > 0) {
+      const nextR = [...newR, ...receipts];
+      setReceipts(nextR);
+      saveReceiptItems(nextR);
+    }
+    if (newV.length > 0) {
+      const nextV = [...newV, ...viewings];
+      setViewings(nextV);
+      saveViewingItems(nextV);
+    }
     setCsvText('');
     setShowImport(false);
-    alert(`${newItems.length} 件のアイテムを自動仕分けして取り込みました！`);
+    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件`);
   };
 
   // 削除済みアイテム一覧
@@ -575,13 +590,23 @@ export default function ValueInventoryTab() {
             <div className="flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-bold text-[var(--text)]">📝 テキスト貼り付けで取り込む</span>
-                <span className="text-[10px] text-[var(--text-muted)]">自動でカテゴリ判定</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const prompt = `# 役割\nあなたはAmazon Prime Videoの視聴履歴データ抽出エキスパートです。\n提示されるAmazonプライムの視聴履歴テキストを解析し、ダッシュボード取り込み専用のCSV形式で出力してください。\n\n# 出力形式\n日付(YYYY/MM/DD),Prime Video,作品タイトル,推定時間(分),価値(Well-being または Ownership または なし)\n\n# ルール\n1. 各行に1エピソードまたは1作品を出力。\n2. 推定時間: アニメ・ドラマ1話は45分、映画は100分、バラエティ1話は50分。\n3. 余計な挨拶やコードブロック等の装飾は一切入れず、CSVテキストのみ出力。\n\n# 出力例\n2025/06/22,Prime Video,バチェラー・ジャパン シーズン６,50,Well-being\n2025/06/01,Prime Video,アプレンティス：ドナルド・トランプの創り方,100,Ownership\n2025/05/26,Prime Video,アンナチュラル,45,Well-being`;
+                    navigator.clipboard.writeText(prompt);
+                    alert('Amazon Prime Video用 Geminiプロンプトをクリップボードにコピーしました！Geminiに貼り付けて履歴テキストを渡してください。');
+                  }}
+                  className="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 font-bold hover:bg-amber-500 hover:text-white transition-colors"
+                >
+                  📋 Prime用Geminiプロンプトをコピー
+                </button>
               </div>
               <textarea
                 rows={5}
                 value={csvText}
                 onChange={(e) => setCsvText(e.target.value)}
-                placeholder="2026/08/10,Amazon,Insta360 Ace Pro 2,58300&#10;2026/03/07,メルカリ,サッカー戦術の黄金則,1800"
+                placeholder="2025/06/22,Prime Video,バチェラー・ジャパン シーズン６,50,Well-being&#10;2026/08/10,Amazon,Insta360 Ace Pro 2,58300"
                 className="text-xs font-mono p-3 rounded-2xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] flex-1 resize-none"
               />
               <div className="flex justify-end">

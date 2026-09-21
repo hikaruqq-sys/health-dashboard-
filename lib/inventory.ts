@@ -297,3 +297,94 @@ export function computeValueSummaries(receipts: ReceiptItem[], viewings: Viewing
 
   return map;
 }
+
+
+export interface ParsedImportResult {
+  receipts: ReceiptItem[];
+  viewings: ViewingItem[];
+}
+
+/**
+ * テキストまたはCSVから、購入アイテム(ReceiptItem)と視聴ログ(ViewingItem)を自動判別してパース
+ * 形式1 (購入): 日付,店舗名,商品名,金額
+ * 形式2 (視聴): 日付,媒体(Prime Video/Netflix等),作品名,時間(分),価値タグ(任意)
+ */
+export function parseImportCSV(csvText: string): ParsedImportResult {
+  const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
+  const receipts: ReceiptItem[] = [];
+  const viewings: ViewingItem[] = [];
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('日付') || line.startsWith('date') || line.startsWith('視聴日')) continue;
+
+    const parts = line.split(',').map((p) => p.trim());
+    if (parts.length < 3) continue;
+
+    const dateRaw = parts[0];
+    const storeOrPlatform = parts[1];
+    const nameOrTitle = parts[2];
+    const fourth = parts[3] || '0';
+    const fifth = parts[4] || '';
+
+    const num = parseInt(fourth.replace(/[^\d-]/g, ''), 10) || 0;
+    const date = dateRaw.replace(/\//g, '-');
+
+    const sLower = storeOrPlatform.toLowerCase();
+    const isViewing =
+      sLower.includes('prime') ||
+      sLower.includes('netflix') ||
+      sLower.includes('u-next') ||
+      sLower.includes('tver') ||
+      sLower.includes('dazn') ||
+      sLower.includes('nhk') ||
+      sLower.includes('video') ||
+      fourth.includes('分') ||
+      fourth.includes('min');
+
+    if (isViewing) {
+      // 視聴アイテムとしてパース
+      let tag: ValueTag = 'none';
+      if (fifth.includes('Well') || fifth.includes('well')) tag = 'well-being';
+      else if (fifth.includes('Owner') || fifth.includes('owner')) tag = 'ownership';
+
+      let cat: ViewingItem['category'] = 'movie';
+      const nLower = nameOrTitle.toLowerCase();
+      if (nLower.includes('サッカー') || nLower.includes('fc') || nLower.includes('代表') || nLower.includes('モウリーニョ')) cat = 'soccer';
+      else if (nLower.includes('アニメ') || nLower.includes('ツガイ') || nLower.includes('三国') || nLower.includes('事変') || nLower.includes('モルカー') || nLower.includes('ドラえもん')) cat = 'anime';
+      else if (nLower.includes('ドキュメンタリー') || nLower.includes('ジョコビッチ') || nLower.includes('ラファ')) cat = 'documentary';
+      else if (nLower.includes('バチェラー') || nLower.includes('バチェロレッテ') || nLower.includes('最強王')) cat = 'variety';
+      else if (nLower.includes('シーズン') || nLower.includes('アンナチュラル') || nLower.includes('miu404') || nLower.includes('新しい王様')) cat = 'drama';
+
+      viewings.push({
+        id: `v-imp-${Date.now()}-${i}`,
+        date,
+        title: nameOrTitle,
+        platform: storeOrPlatform.includes('Netflix') ? 'Netflix' : storeOrPlatform.includes('Prime') ? 'Prime Video' : (storeOrPlatform as any),
+        durationMin: num > 0 ? num : (cat === 'movie' || cat === 'soccer' ? 100 : 45),
+        category: cat,
+        valueTag: tag,
+        rating: 4,
+      });
+    } else {
+      // 購入アイテムとしてパース
+      const { category, valueTag } = guessCategoryAndValue(nameOrTitle, storeOrPlatform);
+      const { season, clothingCategory } = guessSeasonAndClothingCategory(nameOrTitle);
+
+      receipts.push({
+        id: `rc-imp-${Date.now()}-${i}`,
+        date,
+        store: storeOrPlatform,
+        name: nameOrTitle,
+        amount: num,
+        category,
+        valueTag,
+        season: category === 'clothes' ? season : undefined,
+        clothingCategory: category === 'clothes' ? clothingCategory : undefined,
+        rating: 3,
+      });
+    }
+  }
+
+  return { receipts, viewings };
+}
