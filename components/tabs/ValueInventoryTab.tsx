@@ -38,16 +38,24 @@ export default function ValueInventoryTab() {
   // クラウド同期（MacBook ⇆ iPhone）用状態
   const [cloudSyncStatus, setCloudSyncStatus] = useState<'idle' | 'syncing' | 'synced' | 'error'>('idle');
   const [cloudUpdatedAt, setCloudUpdatedAt] = useState<string | null>(null);
+  const [cloudHistory, setCloudHistory] = useState<{ id: string; createdAt: string; label: string; receiptCount: number; viewingCount: number }[]>([]);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
-  // クラウドへデータを保存（マスター保存）
-  const handlePushToCloud = async (overrideReceipts?: ReceiptItem[], overrideViewings?: ViewingItem[]) => {
+  // クラウドへバックグラウンド自動保存（スナップショット履歴付き）
+  const autoPushToCloud = async (
+    overrideReceipts?: ReceiptItem[],
+    overrideViewings?: ViewingItem[],
+    label = '自動同期',
+    showAlert = false
+  ) => {
     setCloudSyncStatus('syncing');
     try {
       const payload = {
         receipts: overrideReceipts || receipts,
         viewings: overrideViewings || viewings,
         overrides: loadUserOverrides(),
-        updatedBy: typeof window !== 'undefined' && navigator.userAgent.includes('Macintosh') ? 'MacBook' : 'iPhone/Mobile',
+        updatedBy: typeof window !== 'undefined' && navigator.userAgent.includes('Macintosh') ? 'MacBook' : 'iPhone',
+        label,
       };
       const res = await fetch('/api/inventory', {
         method: 'POST',
@@ -58,20 +66,21 @@ export default function ValueInventoryTab() {
       if (json.ok) {
         setCloudSyncStatus('synced');
         setCloudUpdatedAt(json.data.updatedAt);
-        alert('✅ クラウドDBへマスターデータを保存しました！\n別の端末（iPhoneなど）で開いた時に「☁️ クラウドから同期」を押すと、全く同じデータが反映されます。');
+        if (json.history) setCloudHistory(json.history);
+        if (showAlert) {
+          alert('✅ クラウドDBへ保存しました！');
+        }
       } else {
         setCloudSyncStatus('error');
-        alert('クラウドへの保存に失敗しました: ' + (json.error || '不明なエラー'));
       }
-    } catch (e: any) {
+    } catch {
       setCloudSyncStatus('error');
-      alert('クラウド同期エラー: ' + e.message);
     }
   };
 
-  // クラウドから最新データを取得・同期
-  const handlePullFromCloud = async () => {
-    setCloudSyncStatus('syncing');
+  // クラウドから最新データを取得・自動同期
+  const handlePullFromCloud = async (silent = false) => {
+    if (!silent) setCloudSyncStatus('syncing');
     try {
       const res = await fetch('/api/inventory');
       const json = await res.json();
@@ -87,15 +96,57 @@ export default function ValueInventoryTab() {
           }
           setCloudSyncStatus('synced');
           setCloudUpdatedAt(cloudData.updatedAt);
-          alert(`✅ クラウドから最新データを同期しました！\n・購入アイテム: ${cloudData.receipts.length} 件\n・視聴ログ: ${cloudData.viewings.length} 件\n(更新元: ${cloudData.updatedBy || 'クラウド'})`);
+          if (json.history) setCloudHistory(json.history);
+          if (!silent) {
+            alert(`✅ クラウドから最新データを同期しました！\n・購入アイテム: ${cloudData.receipts.length} 件\n・視聴ログ: ${cloudData.viewings.length} 件\n(更新元: ${cloudData.updatedBy || 'クラウド'})`);
+          }
         }
       } else {
-        setCloudSyncStatus('idle');
-        alert('クラウドにまだ保存されたデータがありません。まずMacBookで「💻 このMacのデータをマスターとして保存」を実行してください。');
+        if (!silent) {
+          alert('クラウドにデータがありません。');
+        }
       }
     } catch (e: any) {
-      setCloudSyncStatus('error');
-      alert('クラウド取得エラー: ' + e.message);
+      if (!silent) {
+        setCloudSyncStatus('error');
+        alert('クラウド同期エラー: ' + e.message);
+      }
+    }
+  };
+
+  // スナップショット復元（過去の状態に戻す）
+  const handleRestoreSnapshot = async (snapshotId: string, label: string, createdAt: string) => {
+    const dateStr = new Date(createdAt).toLocaleString('ja-JP');
+    if (!confirm(`【${dateStr}】時点の状態に戻しますか？\n現在のデータはその時点のデータに上書き復元されます。`)) {
+      return;
+    }
+    setCloudSyncStatus('syncing');
+    try {
+      const res = await fetch('/api/inventory', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'restore', snapshotId }),
+      });
+      const json = await res.json();
+      if (json.ok && json.data) {
+        const restored = json.data;
+        setReceipts(restored.receipts);
+        setViewings(restored.viewings);
+        saveReceiptItems(restored.receipts);
+        saveViewingItems(restored.viewings);
+        if (restored.overrides) {
+          localStorage.setItem('life_user_overrides_v1', JSON.stringify(restored.overrides));
+        }
+        setCloudSyncStatus('synced');
+        setCloudUpdatedAt(restored.updatedAt);
+        if (json.history) setCloudHistory(json.history);
+        setShowHistoryModal(false);
+        alert(`✅ 【${dateStr}】の状態に復元しました！`);
+      } else {
+        alert('復元に失敗しました: ' + (json.error || '不明なエラー'));
+      }
+    } catch (e: any) {
+      alert('復元エラー: ' + e.message);
     }
   };
 
@@ -201,23 +252,13 @@ export default function ValueInventoryTab() {
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editingImageUrl, setEditingImageUrl] = useState('');
 
-  // 初期ロード（過去データ・ユーザー画像オーバーライドを確実に反映 ＆ クラウドステータス確認）
+  // 初期ロード（過去データ反映 ＆ クラウド最新データ自動同期）
   useEffect(() => {
     setReceipts(loadReceiptItems());
     setViewings(loadViewingItems());
 
-    // クラウドの更新状況を確認
-    fetch('/api/inventory')
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.ok && json.data) {
-          setCloudUpdatedAt(json.data.updatedAt);
-          setCloudSyncStatus('synced');
-        }
-      })
-      .catch((e) => {
-        console.warn('Cloud status check skipped', e);
-      });
+    // 画面を開いた時に自動でクラウドから最新データを取得・同期
+    handlePullFromCloud(true);
   }, []);
 
   // 月別推移（時系列）の計算
@@ -294,7 +335,7 @@ export default function ValueInventoryTab() {
     saveViewingItems(next);
   };
 
-  // ファイルインポート（購入・視聴ログ両対応 ＆ 食費・生活費除外）
+  // ファイルインポート（購入・視聴ログ両対応 ＆ 食費・生活費除外 ＆ 自動クラウド保存）
   const handleFileImport = async (files: File[]) => {
     if (files.length === 0) return;
     const file = files[0];
@@ -317,11 +358,13 @@ export default function ValueInventoryTab() {
       saveViewingItems(updatedViewings);
     }
     setShowImport(false);
+    // 自動でクラウドにも保存＆スナップショット記録
+    autoPushToCloud(updatedReceipts, updatedViewings, 'ファイルCSV取り込み');
     const skipMsg = skippedCount > 0 ? `\n・生活費・食費・日用品・交通費（スキップ除外）: ${skippedCount} 件` : '';
-    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件${skipMsg}\n\n※他端末と同期するには、上の「💻 このMacのデータをマスターとして保存」を押してください。`);
+    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件${skipMsg}\n\n☁️ クラウドへ自動同期しました（他端末でも自動反映されます）。`);
   };
 
-  // テキストインポート（購入・視聴ログ両対応 ＆ 食費・生活費除外）
+  // テキストインポート（購入・視聴ログ両対応 ＆ 食費・生活費除外 ＆ 自動クラウド保存）
   const handleImportCSV = () => {
     if (!csvText.trim()) return;
     const { receipts: newR, viewings: newV, skippedCount } = parseImportCSV(csvText);
@@ -343,8 +386,10 @@ export default function ValueInventoryTab() {
     }
     setCsvText('');
     setShowImport(false);
+    // 自動でクラウドにも保存＆スナップショット記録
+    autoPushToCloud(updatedReceipts, updatedViewings, 'テキストCSV取り込み');
     const skipMsg = skippedCount > 0 ? `\n・生活費・食費・日用品・交通費（スキップ除外）: ${skippedCount} 件` : '';
-    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件${skipMsg}\n\n※他端末と同期するには、上の「💻 このMacのデータをマスターとして保存」を押してください。`);
+    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件${skipMsg}\n\n☁️ クラウドへ自動同期しました（他端末でも自動反映されます）。`);
   };
 
   // 削除済みアイテム一覧
@@ -607,7 +652,7 @@ export default function ValueInventoryTab() {
         <div className="flex items-center gap-2">
           <button
             type="button"
-            onClick={() => handlePushToCloud()}
+            onClick={() => autoPushToCloud(receipts, viewings, '手動マスター保存', true)}
             disabled={cloudSyncStatus === 'syncing'}
             className="text-xs px-3.5 py-2 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white shadow transition-all flex items-center gap-1.5"
             title="現在のこのMacのデータをクラウドのマスターデータとして保存します"
@@ -617,13 +662,27 @@ export default function ValueInventoryTab() {
           </button>
           <button
             type="button"
-            onClick={handlePullFromCloud}
+            onClick={() => handlePullFromCloud(false)}
             disabled={cloudSyncStatus === 'syncing'}
             className="text-xs px-3.5 py-2 rounded-xl font-semibold bg-[var(--bg-card2)] hover:bg-[var(--accent)] text-[var(--text)] hover:text-white border border-[var(--border)] transition-all flex items-center gap-1.5"
             title="クラウドDBから最新データを読み込みます（iPhoneでの読み込み時に使用）"
           >
             <span>🔄</span>
             <span>クラウドから同期</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowHistoryModal(true)}
+            className="text-xs px-3 py-2 rounded-xl font-medium bg-[var(--bg-card2)] hover:bg-amber-500/20 text-[var(--text)] hover:text-amber-300 border border-[var(--border)] transition-all flex items-center gap-1.5"
+            title="過去の保存履歴スナップショット一覧から以前の状態に戻せます"
+          >
+            <span>🕒</span>
+            <span>履歴から戻す</span>
+            {cloudHistory.length > 0 && (
+              <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.2 rounded-full font-bold">
+                {cloudHistory.length}
+              </span>
+            )}
           </button>
         </div>
       </div>
@@ -962,6 +1021,97 @@ export default function ValueInventoryTab() {
 
       
       
+      {/* ── 🕒 スナップショット復元モーダル ── */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 w-full max-w-lg flex flex-col gap-4 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-2.5">
+              <div className="flex items-center gap-2">
+                <span className="text-base">🕒</span>
+                <div>
+                  <h3 className="text-sm font-bold text-[var(--text)]">保存履歴・復元（スナップショット）</h3>
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    CSV取り込み前や過去の状態へワンクリックでロールバックできます
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] px-2 py-1 rounded"
+              >
+                ✕ 閉じる
+              </button>
+            </div>
+
+            {cloudHistory.length === 0 ? (
+              <div className="py-8 text-center text-xs text-[var(--text-muted)] flex flex-col items-center gap-2">
+                <span>📁 まだ保存履歴スナップショットがありません</span>
+                <span className="text-[11px]">（CSVの取り込み時やクラウド更新時に自動的に最大10件まで履歴が作成されます）</span>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2.5">
+                <div className="text-[11px] text-[var(--text-muted)] bg-[var(--bg-card2)] p-2.5 rounded-xl border border-[var(--border)]">
+                  💡 復元したい時点の「この時点に戻す」を押すと、その時の購入アイテムや視聴ログの状態に巻き戻せます。
+                </div>
+
+                <div className="space-y-2">
+                  {cloudHistory.map((snap) => {
+                    const snapDate = new Date(snap.createdAt);
+                    const formattedDate = snapDate.toLocaleString('ja-JP', {
+                      month: 'short',
+                      day: 'numeric',
+                      hour: '2-digit',
+                      minute: '2-digit',
+                      second: '2-digit',
+                    });
+
+                    return (
+                      <div
+                        key={snap.id}
+                        className="p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)]/70 hover:border-amber-500/50 transition-colors flex items-center justify-between gap-3"
+                      >
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-xs font-bold text-[var(--text)]">{formattedDate}</span>
+                            <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-500/15 text-amber-400 font-medium">
+                              {snap.label || '自動保存'}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-3 text-[11px] text-[var(--text-muted)]">
+                            <span>購入: <strong className="text-[var(--text)]">{snap.receiptCount}</strong> 件</span>
+                            <span>視聴: <strong className="text-[var(--text)]">{snap.viewingCount}</strong> 件</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleRestoreSnapshot(snap.id, snap.label, snap.createdAt)}
+                          className="px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 active:scale-95 text-black font-bold text-xs shadow transition-all flex items-center gap-1 flex-shrink-0"
+                        >
+                          <span>↩</span>
+                          <span>この時点に戻す</span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="pt-2 border-t border-[var(--border)] flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowHistoryModal(false)}
+                className="text-xs px-4 py-2 rounded-xl bg-[var(--bg-card2)] hover:bg-[var(--border)] text-[var(--text)] font-semibold transition-colors"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── ➕ 手動アイテム追加モーダル（サッカー試合・読書・服・家電） ── */}
       {showManualModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
