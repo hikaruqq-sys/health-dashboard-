@@ -159,7 +159,28 @@ export default function Dashboard() {
   const todayNutrition = selectedDay ?? nutrition[nutrition.length - 1];
 
   const onMealLoaded = (entries: MealEntry[], daily: DailyNutrition[]) => {
-    setMealEntries((prev) => [...prev, ...entries]);
+    setMealEntries((prev) => {
+      const seen = new Set<string>();
+      const result: MealEntry[] = [];
+      // 既存の食事ログを登録
+      for (const m of prev) {
+        const key = `${m.date}-${m.mealType}-${m.foodName.trim().toLowerCase()}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          result.push(m);
+        }
+      }
+      // 新規ログで未登録のものだけ追加（重複除外）
+      for (const m of entries) {
+        const key = `${m.date}-${m.mealType}-${m.foodName.trim().toLowerCase()}`;
+        if (!seen.has(key)) {
+          seen.add(key);
+          result.push(m);
+        }
+      }
+      return result;
+    });
+
     setNutrition((prev) => {
       // If we're currently showing mock sample data, replace it; otherwise merge
       const base = isMealMock ? [] : prev;

@@ -403,7 +403,7 @@ export default function ValueInventoryTab() {
     handleUpdateReceipt(id, { season });
   };
 
-  // Daily Log の解析と反映実行
+  // Daily Log の解析と反映実行（重複自動排除 ＆ クラウド自動同期）
   const handleApplyDailyLog = (text: string) => {
     if (!text.trim()) return;
     const { nextReceipts, nextViewings, result } = matchDailyLogToItems(text, receipts, viewings);
@@ -411,6 +411,24 @@ export default function ValueInventoryTab() {
     setViewings(nextViewings);
     saveReceiptItems(nextReceipts);
     saveViewingItems(nextViewings);
+
+    // 更新されたアイテムの感想（notes）を永続オーバーライドにも確実に保存
+    result.updatedReceipts.forEach((u) => {
+      const it = nextReceipts.find((r) => r.id === u.id);
+      if (it && it.notes) {
+        saveItemOverride(it.id, it.name, { notes: it.notes });
+      }
+    });
+    result.updatedViewings.forEach((u) => {
+      const it = nextViewings.find((v) => v.id === u.id);
+      if (it && it.notes) {
+        saveItemOverride(it.id, it.title, { notes: it.notes });
+      }
+    });
+
+    // クラウドにも即時自動保存＆スナップショット
+    autoPushToCloud(nextReceipts, nextViewings, 'Daily Log感想同期');
+
     setMatchSummary(result);
     setDailyLogInput('');
   };
@@ -2059,8 +2077,8 @@ export default function ValueInventoryTab() {
 
             {/* ファイルドロップ */}
             <FileDropZone
-              label="daily_log.csv をドロップ"
-              hint="月1回のデイリーログファイルを直接解析"
+              label="daily_log.csv / lifelog をドロップ"
+              hint="月1回の思考・ライフログを直接解析（登録済みの重複は自動スキップ）"
               onFiles={async (files) => {
                 if (files.length === 0) return;
                 const text = await files[0].text();
@@ -2092,7 +2110,16 @@ export default function ValueInventoryTab() {
                   {matchSummary.newViewings.length > 0 && (
                     <li>• ログから自動検出された新規視聴作品: <strong>{matchSummary.newViewings.length}</strong> 件 ({matchSummary.newViewings.map(v => v.title).join(', ')})</li>
                   )}
+                  {matchSummary.skippedDuplicates > 0 && (
+                    <li className="text-amber-500 font-bold flex items-center gap-1">
+                      <span>✨</span>
+                      <span>登録済みの重複ログ: <strong>{matchSummary.skippedDuplicates}</strong> 件（二重追加を自動防止）</span>
+                    </li>
+                  )}
                 </ul>
+                <p className="text-[10px] text-[var(--text-muted)] mt-0.5">
+                  ☁️ クラウドへ自動同期しました（他端末でも自動反映されます）。
+                </p>
               </div>
             )}
 
