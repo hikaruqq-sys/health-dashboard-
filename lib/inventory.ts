@@ -53,6 +53,12 @@ export interface UserOverride {
   clothingCategory?: ClothingCategory;
   category?: InventoryCategory;
   durationMin?: number;
+  name?: string;
+  store?: string;
+  amount?: number;
+  date?: string;
+  author?: string;
+  publishedDate?: string;
 }
 
 /** ユーザーカスタマイズ（画像・評価・感想など）を取得 */
@@ -114,6 +120,12 @@ export function loadReceiptItems(): ReceiptItem[] {
       if (ov) {
         return {
           ...it,
+          ...(ov.name !== undefined && { name: ov.name }),
+          ...(ov.store !== undefined && { store: ov.store }),
+          ...(ov.amount !== undefined && { amount: ov.amount }),
+          ...(ov.date !== undefined && { date: ov.date }),
+          ...(ov.author !== undefined && { author: ov.author }),
+          ...(ov.publishedDate !== undefined && { publishedDate: ov.publishedDate }),
           ...(ov.imageUrl !== undefined && { imageUrl: ov.imageUrl }),
           ...(ov.rating !== undefined && { rating: ov.rating }),
           ...(ov.notes !== undefined && { notes: ov.notes }),

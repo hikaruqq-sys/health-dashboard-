@@ -114,6 +114,8 @@ export interface ReceiptItem {
   isFinished?: boolean;   // 読了・使い切り
   isRecommended?: boolean;// 人に薦めたいか
   deleted?: boolean;      // 削除フラグ
+  author?: string;        // 著者・作者名（書籍用）
+  publishedDate?: string; // 発行年月（例: 2021-12）
 }
 
 export interface ViewingItem {

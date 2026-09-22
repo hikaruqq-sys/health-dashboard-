@@ -155,6 +155,29 @@ export default function ValueInventoryTab() {
   const [dailyLogInput, setDailyLogInput] = useState('');
   const [matchSummary, setMatchSummary] = useState<MatchResult | null>(null);
 
+  // ── AI仕分け（Gemini 3.6 Flash）＆ 取り込み前プレビュー用状態 ──
+  const [isClassifying, setIsClassifying] = useState(false);
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [pendingClassifiedItems, setPendingClassifiedItems] = useState<{
+    id: string;
+    date: string;
+    store: string;
+    name: string;
+    amount: number;
+    category: InventoryCategory;
+    valueTag: ValueTag;
+    author?: string;
+    publishedDate?: string;
+    clothingCategory?: ClothingCategory;
+    season?: ClothingSeason;
+    selected?: boolean;
+  }[]>([]);
+  const [classifyStats, setClassifyStats] = useState<{ total: number; skipped: number }>({ total: 0, skipped: 0 });
+
+  // ── カードごとのフル編集用状態 ──
+  const [editingReceiptItem, setEditingReceiptItem] = useState<ReceiptItem | null>(null);
+  const [showReceiptEditModal, setShowReceiptEditModal] = useState(false);
+
   // 手動追加モーダル用状態
   const [showManualModal, setShowManualModal] = useState(false);
   const [manualCategory, setManualCategory] = useState<'viewing' | 'book' | 'clothes' | 'gadget'>('viewing');
@@ -166,6 +189,8 @@ export default function ValueInventoryTab() {
   const [manualRating, setManualRating] = useState<number>(4);
   const [manualNotes, setManualNotes] = useState('');
   const [manualImageUrl, setManualImageUrl] = useState('');
+  const [manualAuthor, setManualAuthor] = useState('');
+  const [manualPublishedDate, setManualPublishedDate] = useState('');
 
   // 価値タグの切り替えハンドラ
   const handleChangeValueTagReceipt = (id: string, tag: ValueTag) => {
@@ -209,6 +234,8 @@ export default function ValueInventoryTab() {
         amount,
         category: manualCategory,
         valueTag: manualValueTag,
+        author: manualCategory === 'book' ? manualAuthor.trim() || undefined : undefined,
+        publishedDate: manualCategory === 'book' ? manualPublishedDate.trim() || undefined : undefined,
         season: manualCategory === 'clothes' ? 'all' : undefined,
         notes: manualNotes.trim() || undefined,
         imageUrl: manualImageUrl.trim() || undefined,
@@ -223,8 +250,120 @@ export default function ValueInventoryTab() {
     setManualTitle('');
     setManualNotes('');
     setManualImageUrl('');
+    setManualAuthor('');
+    setManualPublishedDate('');
     setShowManualModal(false);
     alert('アイテムを追加しました！');
+  };
+
+  // ── AI仕分け（Gemini 3.6 Flash）の実行 ──
+  const handleClassifyCSV = async (text: string) => {
+    if (!text.trim()) {
+      alert('CSVテキストが空です。');
+      return;
+    }
+    setIsClassifying(true);
+    try {
+      const res = await fetch('/api/inventory/classify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csvText: text }),
+      });
+      const json = await res.json();
+      if (json.ok && Array.isArray(json.items)) {
+        if (json.items.length === 0) {
+          alert(`対象となるアイテム（洋服・本・家電）が見つかりませんでした。\n（※生活費・食費など ${json.skippedCount || 0} 件が安全に除外されました）`);
+          setIsClassifying(false);
+          return;
+        }
+        setPendingClassifiedItems(json.items);
+        setClassifyStats({ total: json.totalInputLines || json.items.length, skipped: json.skippedCount || 0 });
+        setShowImport(false);
+        setShowReviewModal(true);
+      } else {
+        alert('AI仕分けエラー: ' + (json.error || '不明なエラー'));
+      }
+    } catch (e: any) {
+      alert('通信エラー: ' + e.message);
+    } finally {
+      setIsClassifying(false);
+    }
+  };
+
+  // ── 取り込み前プレビューの確定 ──
+  const handleConfirmReviewImport = () => {
+    const selected = pendingClassifiedItems.filter((it) => it.selected);
+    if (selected.length === 0) {
+      alert('取り込むアイテムが1つも選択されていません。');
+      return;
+    }
+
+    const newReceiptItems: ReceiptItem[] = selected.map((it) => ({
+      id: it.id || `rc-gen-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      date: it.date,
+      store: it.store,
+      name: it.name,
+      amount: it.amount,
+      category: it.category,
+      valueTag: it.valueTag,
+      author: it.author,
+      publishedDate: it.publishedDate,
+      clothingCategory: it.clothingCategory,
+      season: it.season,
+    }));
+
+    const nextReceipts = [...newReceiptItems, ...receipts];
+    setReceipts(nextReceipts);
+    saveReceiptItems(nextReceipts);
+
+    // 永続オーバーライドにも著者名・発行年月・カテゴリを保存
+    newReceiptItems.forEach((it) => {
+      saveItemOverride(it.id, it.name, {
+        author: it.author,
+        publishedDate: it.publishedDate,
+        category: it.category,
+        season: it.season,
+        clothingCategory: it.clothingCategory,
+        valueTag: it.valueTag,
+      });
+    });
+
+    setShowReviewModal(false);
+    setPendingClassifiedItems([]);
+    setCsvText('');
+
+    // クラウド自動保存＆スナップショット
+    autoPushToCloud(nextReceipts, viewings, 'AI-CSV取り込み');
+    alert(`✅ ${newReceiptItems.length} 件のアイテムを取り込みました！\n（クラウドへ自動保存されました）`);
+  };
+
+  // ── アイテム情報のフル編集保存 ──
+  const handleSaveReceiptEdit = () => {
+    if (!editingReceiptItem) return;
+    const updated = receipts.map((r) => (r.id === editingReceiptItem.id ? editingReceiptItem : r));
+    setReceipts(updated);
+    saveReceiptItems(updated);
+
+    // 永続オーバーライド
+    saveItemOverride(editingReceiptItem.id, editingReceiptItem.name, {
+      name: editingReceiptItem.name,
+      category: editingReceiptItem.category,
+      store: editingReceiptItem.store,
+      date: editingReceiptItem.date,
+      amount: editingReceiptItem.amount,
+      valueTag: editingReceiptItem.valueTag,
+      notes: editingReceiptItem.notes,
+      imageUrl: editingReceiptItem.imageUrl,
+      author: editingReceiptItem.author,
+      publishedDate: editingReceiptItem.publishedDate,
+      season: editingReceiptItem.season,
+      clothingCategory: editingReceiptItem.clothingCategory,
+    });
+
+    autoPushToCloud(updated, viewings, `編集: ${editingReceiptItem.name}`);
+    setShowReceiptEditModal(false);
+    setEditingReceiptItem(null);
+    alert('✅ アイテム情報を更新しました！');
   };
 
   // シーズン変更ハンドラ
@@ -335,33 +474,13 @@ export default function ValueInventoryTab() {
     saveViewingItems(next);
   };
 
-  // ファイルインポート（購入・視聴ログ両対応 ＆ 食費・生活費除外 ＆ 自動クラウド保存）
+  // ファイルインポート（ファイル選択時は自動でGemini AI高精度仕分けを実行）
   const handleFileImport = async (files: File[]) => {
     if (files.length === 0) return;
     const file = files[0];
     const text = await file.text();
-    const { receipts: newR, viewings: newV, skippedCount } = parseImportCSV(text);
-    if (newR.length === 0 && newV.length === 0) {
-      alert(`有効なアイテムを読み込めませんでした。形式を確認してください。${skippedCount > 0 ? `\n（※生活費・食費・日用品 ${skippedCount} 件が安全にスキップされました）` : ''}`);
-      return;
-    }
-    let updatedReceipts = receipts;
-    let updatedViewings = viewings;
-    if (newR.length > 0) {
-      updatedReceipts = [...newR, ...receipts];
-      setReceipts(updatedReceipts);
-      saveReceiptItems(updatedReceipts);
-    }
-    if (newV.length > 0) {
-      updatedViewings = [...newV, ...viewings];
-      setViewings(updatedViewings);
-      saveViewingItems(updatedViewings);
-    }
-    setShowImport(false);
-    // 自動でクラウドにも保存＆スナップショット記録
-    autoPushToCloud(updatedReceipts, updatedViewings, 'ファイルCSV取り込み');
-    const skipMsg = skippedCount > 0 ? `\n・生活費・食費・日用品・交通費（スキップ除外）: ${skippedCount} 件` : '';
-    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件${skipMsg}\n\n☁️ クラウドへ自動同期しました（他端末でも自動反映されます）。`);
+    setCsvText(text);
+    handleClassifyCSV(text);
   };
 
   // テキストインポート（購入・視聴ログ両対応 ＆ 食費・生活費除外 ＆ 自動クラウド保存）
@@ -1004,13 +1123,43 @@ export default function ValueInventoryTab() {
                   placeholder="2025/06/22,Prime Video,バチェラー・ジャパン シーズン６,50,Well-being&#10;2026/08/10,Amazon,Insta360 Ace Pro 2,58300"
                   className="text-xs font-mono p-3 rounded-2xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] flex-1 resize-none"
                 />
-                <div className="flex justify-end">
+                {isClassifying && (
+                  <div className="p-3 rounded-xl bg-indigo-500/10 border border-indigo-500/30 text-xs text-indigo-600 dark:text-indigo-400 flex items-center gap-2.5 animate-pulse">
+                    <span className="text-base animate-spin">⏳</span>
+                    <span className="leading-relaxed">
+                      <strong>Gemini 3.6 Flash が購買CSVを自動解析中...</strong><br />
+                      生活費・食費・日用品を安全にスキップし、洋服・本（著者名・発行年月Web補完）・家電ギアを抽出しています。
+                    </span>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   <button
+                    type="button"
                     onClick={handleImportCSV}
-                    disabled={!csvText.trim()}
-                    className="text-xs px-4 py-2 rounded-xl font-bold bg-[var(--accent)] text-white disabled:opacity-50 transition-opacity"
+                    disabled={!csvText.trim() || isClassifying}
+                    className="text-xs px-3 py-2 rounded-xl font-medium bg-[var(--bg-card2)] text-[var(--text-sub)] hover:text-[var(--text)] border border-[var(--border)] disabled:opacity-50 transition-all"
+                    title="AIを使わず、カンマ区切りテキストをそのまま即時反映します"
                   >
-                    テキストから自動仕分け取り込み
+                    ⚡ 簡易直接取り込み
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleClassifyCSV(csvText)}
+                    disabled={!csvText.trim() || isClassifying}
+                    className="text-xs px-4 py-2 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white disabled:opacity-50 transition-all shadow flex items-center gap-1.5"
+                  >
+                    {isClassifying ? (
+                      <>
+                        <span className="animate-spin inline-block">⏳</span>
+                        <span>AIが解析中...</span>
+                      </>
+                    ) : (
+                      <>
+                        <span>✨</span>
+                        <span>Gemini AIで高精度仕分け（推奨）</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
@@ -1112,6 +1261,498 @@ export default function ValueInventoryTab() {
         </div>
       )}
 
+      {/* ── ✨ AI仕分け結果の確認・プレビュー・編集モーダル ── */}
+      {showReviewModal && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 w-full max-w-2xl flex flex-col gap-4 shadow-2xl max-h-[90vh] overflow-hidden">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-3">
+              <div className="flex items-center gap-2">
+                <span className="text-xl">✨</span>
+                <div>
+                  <h3 className="text-sm font-bold text-[var(--text)] flex items-center gap-2">
+                    <span>AI仕分け結果の確認・編集</span>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-400 font-bold">
+                      {pendingClassifiedItems.filter((it) => it.selected).length} / {pendingClassifiedItems.length} 件選択中
+                    </span>
+                  </h3>
+                  <p className="text-[11px] text-[var(--text-muted)]">
+                    生活費・食費 {classifyStats.skipped} 件が安全に除外されました。取り込むアイテムを確認・修正してください。
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowReviewModal(false)}
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--text)] px-2 py-1 rounded"
+              >
+                ✕ 閉じる
+              </button>
+            </div>
+
+            {/* 一括操作バー */}
+            <div className="flex items-center justify-between gap-2 text-xs bg-[var(--bg-card2)] p-2.5 rounded-xl border border-[var(--border)]">
+              <span className="text-[11px] text-[var(--text-sub)]">
+                💡 不要な行はチェックを外すか除外できます。カテゴリや著者名の変更も可能です。
+              </span>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPendingClassifiedItems((prev) => prev.map((it) => ({ ...it, selected: true })))
+                  }
+                  className="text-[11px] text-indigo-500 font-bold hover:underline"
+                >
+                  すべて選択
+                </button>
+                <span className="text-[var(--border)]">|</span>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setPendingClassifiedItems((prev) => prev.map((it) => ({ ...it, selected: false })))
+                  }
+                  className="text-[11px] text-[var(--text-muted)] hover:underline"
+                >
+                  すべて解除
+                </button>
+              </div>
+            </div>
+
+            {/* アイテム一覧 */}
+            <div className="flex-1 overflow-y-auto space-y-3 pr-1">
+              {pendingClassifiedItems.map((item, idx) => (
+                <div
+                  key={item.id || idx}
+                  className={`p-3.5 rounded-xl border transition-all flex flex-col gap-2.5 ${
+                    item.selected
+                      ? 'border-indigo-500/40 bg-[var(--bg-card2)]'
+                      : 'border-[var(--border)] bg-[var(--bg-card2)]/40 opacity-50'
+                  }`}
+                >
+                  {/* 上段：選択チェック ＆ カテゴリ ＆ 日付 ＆ 店舗 ＆ 金額 */}
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={item.selected ?? true}
+                        onChange={(e) => {
+                          const checked = e.target.checked;
+                          setPendingClassifiedItems((prev) =>
+                            prev.map((it, i) => (i === idx ? { ...it, selected: checked } : it))
+                          );
+                        }}
+                        className="w-4 h-4 rounded text-indigo-600 cursor-pointer"
+                      />
+                      <select
+                        value={item.category}
+                        onChange={(e) => {
+                          const cat = e.target.value as InventoryCategory;
+                          setPendingClassifiedItems((prev) =>
+                            prev.map((it, i) => (i === idx ? { ...it, category: cat } : it))
+                          );
+                        }}
+                        className="text-xs px-2.5 py-1 rounded-lg font-bold border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)] cursor-pointer"
+                      >
+                        <option value="book">📚 読書記録</option>
+                        <option value="clothes">👕 洋服</option>
+                        <option value="gadget">🔌 家電・ギア</option>
+                      </select>
+                      <span className="text-[11px] text-[var(--text-muted)]">{item.date}</span>
+                      <span className="text-[11px] px-1.5 py-0.5 rounded bg-black/20 text-[var(--text-sub)]">
+                        {item.store}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-1">
+                        <span className="text-xs text-[var(--text-muted)]">¥</span>
+                        <input
+                          type="number"
+                          value={item.amount}
+                          onChange={(e) => {
+                            const val = parseInt(e.target.value, 10) || 0;
+                            setPendingClassifiedItems((prev) =>
+                              prev.map((it, i) => (i === idx ? { ...it, amount: val } : it))
+                            );
+                          }}
+                          className="text-xs font-bold w-20 p-1 rounded-md border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)] tabular-nums text-right"
+                        />
+                      </div>
+                      <select
+                        value={item.valueTag}
+                        onChange={(e) => {
+                          const tag = e.target.value as ValueTag;
+                          setPendingClassifiedItems((prev) =>
+                            prev.map((it, i) => (i === idx ? { ...it, valueTag: tag } : it))
+                          );
+                        }}
+                        className="text-[10px] px-2 py-1 rounded-md font-bold border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text-sub)] cursor-pointer"
+                      >
+                        <option value="none">⚪ なし</option>
+                        <option value="well-being">🌿 Well-being</option>
+                        <option value="ownership">🧭 Ownership</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* 中段：品名入力 */}
+                  <div>
+                    <input
+                      type="text"
+                      value={item.name}
+                      onChange={(e) => {
+                        const name = e.target.value;
+                        setPendingClassifiedItems((prev) =>
+                          prev.map((it, i) => (i === idx ? { ...it, name } : it))
+                        );
+                      }}
+                      className="text-xs font-bold w-full p-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)]"
+                      placeholder="品名・タイトル"
+                    />
+                  </div>
+
+                  {/* 下段：カテゴリ特有の詳細情報（読書なら著者・発行年月、洋服ならシーズン・種別） */}
+                  {item.category === 'book' && (
+                    <div className="grid grid-cols-2 gap-2 bg-[var(--bg-card)]/70 p-2.5 rounded-lg border border-[var(--border)]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-[var(--text-sub)] whitespace-nowrap">👤 著者:</span>
+                        <input
+                          type="text"
+                          value={item.author || ''}
+                          onChange={(e) => {
+                            const author = e.target.value;
+                            setPendingClassifiedItems((prev) =>
+                              prev.map((it, i) => (i === idx ? { ...it, author } : it))
+                            );
+                          }}
+                          placeholder="著者名（Web自動取得）"
+                          className="text-xs p-1.5 rounded border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] flex-1 font-medium"
+                        />
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-[var(--text-sub)] whitespace-nowrap">📖 発行:</span>
+                        <input
+                          type="text"
+                          value={item.publishedDate || ''}
+                          onChange={(e) => {
+                            const publishedDate = e.target.value;
+                            setPendingClassifiedItems((prev) =>
+                              prev.map((it, i) => (i === idx ? { ...it, publishedDate } : it))
+                            );
+                          }}
+                          placeholder="例: 2021-12"
+                          className="text-xs p-1.5 rounded border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] flex-1"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {item.category === 'clothes' && (
+                    <div className="grid grid-cols-2 gap-2 bg-[var(--bg-card)]/70 p-2.5 rounded-lg border border-[var(--border)]">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-[var(--text-sub)]">季節:</span>
+                        <select
+                          value={item.season || 'all'}
+                          onChange={(e) => {
+                            const season = e.target.value as ClothingSeason;
+                            setPendingClassifiedItems((prev) =>
+                              prev.map((it, i) => (i === idx ? { ...it, season } : it))
+                            );
+                          }}
+                          className="text-xs p-1.5 rounded border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] flex-1"
+                        >
+                          <option value="all">🔄 オールシーズン</option>
+                          <option value="summer">☀️ 夏</option>
+                          <option value="winter">❄️ 冬</option>
+                          <option value="spring_autumn">🍂 春秋</option>
+                        </select>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[11px] font-semibold text-[var(--text-sub)]">種別:</span>
+                        <select
+                          value={item.clothingCategory || 'tops'}
+                          onChange={(e) => {
+                            const clothingCategory = e.target.value as ClothingCategory;
+                            setPendingClassifiedItems((prev) =>
+                              prev.map((it, i) => (i === idx ? { ...it, clothingCategory } : it))
+                            );
+                          }}
+                          className="text-xs p-1.5 rounded border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] flex-1"
+                        >
+                          <option value="tops">👕 トップス</option>
+                          <option value="bottoms">👖 ボトムス</option>
+                          <option value="outer">🧥 アウター</option>
+                          <option value="shoes">👟 シューズ</option>
+                          <option value="bag">🎒 バッグ</option>
+                          <option value="sports_inner">🏃 スポーツ・インナー</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* フッター */}
+            <div className="pt-3 border-t border-[var(--border)] flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setShowReviewModal(false)}
+                className="text-xs px-4 py-2 rounded-xl bg-[var(--bg-card2)] text-[var(--text-sub)] hover:text-[var(--text)] font-semibold transition-colors"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmReviewImport}
+                disabled={pendingClassifiedItems.filter((it) => it.selected).length === 0}
+                className="text-xs px-5 py-2.5 rounded-xl font-bold bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white shadow-lg transition-all flex items-center gap-1.5 disabled:opacity-50"
+              >
+                <span>✅</span>
+                <span>この内容で確定（{pendingClassifiedItems.filter((it) => it.selected).length} 件を取り込む）</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── ✏️ アイテム情報のフル編集モーダル ── */}
+      {showReceiptEditModal && editingReceiptItem && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-[var(--bg-card)] border border-[var(--border)] rounded-2xl p-5 w-full max-w-md flex flex-col gap-4 shadow-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between border-b border-[var(--border)] pb-2.5">
+              <h3 className="text-sm font-bold text-[var(--text)] flex items-center gap-1.5">
+                <span>✏️</span>
+                <span>アイテム情報の編集</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setShowReceiptEditModal(false)}
+                className="text-xs text-[var(--text-muted)] hover:text-[var(--text)]"
+              >
+                ✕ 閉じる
+              </button>
+            </div>
+
+            {/* カテゴリ選択（タブ移動可能） */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--text-sub)]">所属カテゴリ（タブ移動）:</label>
+              <div className="grid grid-cols-3 gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setEditingReceiptItem({ ...editingReceiptItem, category: 'clothes' })}
+                  className={`text-xs py-1.5 rounded-lg font-bold transition-all ${
+                    editingReceiptItem.category === 'clothes'
+                      ? 'bg-[var(--accent)] text-white shadow'
+                      : 'bg-[var(--bg-card2)] text-[var(--text-sub)]'
+                  }`}
+                >
+                  👕 洋服
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingReceiptItem({ ...editingReceiptItem, category: 'book' })}
+                  className={`text-xs py-1.5 rounded-lg font-bold transition-all ${
+                    editingReceiptItem.category === 'book'
+                      ? 'bg-[var(--accent)] text-white shadow'
+                      : 'bg-[var(--bg-card2)] text-[var(--text-sub)]'
+                  }`}
+                >
+                  📚 読書記録
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditingReceiptItem({ ...editingReceiptItem, category: 'gadget' })}
+                  className={`text-xs py-1.5 rounded-lg font-bold transition-all ${
+                    editingReceiptItem.category === 'gadget'
+                      ? 'bg-[var(--accent)] text-white shadow'
+                      : 'bg-[var(--bg-card2)] text-[var(--text-sub)]'
+                  }`}
+                >
+                  🔌 家電・ギア
+                </button>
+              </div>
+            </div>
+
+            {/* 品名 */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--text-sub)]">品名・タイトル:</label>
+              <input
+                type="text"
+                value={editingReceiptItem.name}
+                onChange={(e) => setEditingReceiptItem({ ...editingReceiptItem, name: e.target.value })}
+                className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] font-bold"
+              />
+            </div>
+
+            {/* 読書記録の場合：著者名 ＆ 発行年月 */}
+            {editingReceiptItem.category === 'book' && (
+              <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-[var(--bg-card2)] border border-[var(--border)]">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-semibold text-[var(--text-sub)]">👤 著者・作者名:</label>
+                  <input
+                    type="text"
+                    value={editingReceiptItem.author || ''}
+                    onChange={(e) => setEditingReceiptItem({ ...editingReceiptItem, author: e.target.value })}
+                    placeholder="例: アンディ・ウィアー"
+                    className="text-xs p-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)] font-medium"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-semibold text-[var(--text-sub)]">📖 発行年月:</label>
+                  <input
+                    type="text"
+                    value={editingReceiptItem.publishedDate || ''}
+                    onChange={(e) => setEditingReceiptItem({ ...editingReceiptItem, publishedDate: e.target.value })}
+                    placeholder="例: 2021-12"
+                    className="text-xs p-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)]"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* 洋服の場合：シーズン ＆ 種別 */}
+            {editingReceiptItem.category === 'clothes' && (
+              <div className="grid grid-cols-2 gap-2 p-2.5 rounded-xl bg-[var(--bg-card2)] border border-[var(--border)]">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-semibold text-[var(--text-sub)]">シーズン:</label>
+                  <select
+                    value={editingReceiptItem.season || 'all'}
+                    onChange={(e) => setEditingReceiptItem({ ...editingReceiptItem, season: e.target.value as ClothingSeason })}
+                    className="text-xs p-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)]"
+                  >
+                    <option value="all">🔄 オールシーズン</option>
+                    <option value="summer">☀️ 夏</option>
+                    <option value="winter">❄️ 冬</option>
+                    <option value="spring_autumn">🍂 春秋</option>
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-semibold text-[var(--text-sub)]">種別:</label>
+                  <select
+                    value={editingReceiptItem.clothingCategory || 'tops'}
+                    onChange={(e) => setEditingReceiptItem({ ...editingReceiptItem, clothingCategory: e.target.value as ClothingCategory })}
+                    className="text-xs p-1.5 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)]"
+                  >
+                    <option value="tops">👕 トップス</option>
+                    <option value="bottoms">👖 ボトムス</option>
+                    <option value="outer">🧥 アウター</option>
+                    <option value="shoes">👟 シューズ</option>
+                    <option value="bag">🎒 バッグ</option>
+                    <option value="sports_inner">🏃 スポーツ・インナー</option>
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {/* 日付 ＆ 店舗 */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-[var(--text-sub)]">購入日:</label>
+                <input
+                  type="date"
+                  value={editingReceiptItem.date}
+                  onChange={(e) => setEditingReceiptItem({ ...editingReceiptItem, date: e.target.value })}
+                  className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-[var(--text-sub)]">店舗/購入先:</label>
+                <input
+                  type="text"
+                  value={editingReceiptItem.store}
+                  onChange={(e) => setEditingReceiptItem({ ...editingReceiptItem, store: e.target.value })}
+                  className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
+                />
+              </div>
+            </div>
+
+            {/* 金額 ＆ 価値タグ */}
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-[var(--text-sub)]">購入金額 (円):</label>
+                <input
+                  type="number"
+                  value={editingReceiptItem.amount}
+                  onChange={(e) => setEditingReceiptItem({ ...editingReceiptItem, amount: parseInt(e.target.value, 10) || 0 })}
+                  className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] font-bold tabular-nums"
+                />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-[var(--text-sub)]">人生価値タグ:</label>
+                <select
+                  value={editingReceiptItem.valueTag}
+                  onChange={(e) => setEditingReceiptItem({ ...editingReceiptItem, valueTag: e.target.value as ValueTag })}
+                  className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] font-semibold"
+                >
+                  <option value="none">⚪ なし</option>
+                  <option value="well-being">🌿 Well-being</option>
+                  <option value="ownership">🧭 Ownership</option>
+                </select>
+              </div>
+            </div>
+
+            {/* 感想・メモ */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--text-sub)]">感想・メモ:</label>
+              <textarea
+                rows={2}
+                value={editingReceiptItem.notes || ''}
+                onChange={(e) => setEditingReceiptItem({ ...editingReceiptItem, notes: e.target.value })}
+                placeholder="買ってよかった点や所感"
+                className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)] resize-none"
+              />
+            </div>
+
+            {/* 画像URL */}
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-[var(--text-muted)]">画像URL:</label>
+              <input
+                type="url"
+                value={editingReceiptItem.imageUrl || ''}
+                onChange={(e) => setEditingReceiptItem({ ...editingReceiptItem, imageUrl: e.target.value })}
+                placeholder="https://..."
+                className="text-xs p-2 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
+              />
+              {editingReceiptItem.imageUrl && (
+                <div className="w-full h-32 rounded-xl overflow-hidden bg-slate-900/40 border border-[var(--border)] flex items-center justify-center relative mt-1">
+                  <img
+                    src={editingReceiptItem.imageUrl}
+                    alt=""
+                    aria-hidden="true"
+                    className="absolute inset-0 w-full h-full object-cover blur-xl opacity-25 scale-125 pointer-events-none select-none"
+                    onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                  />
+                  <img
+                    src={editingReceiptItem.imageUrl}
+                    alt="Preview"
+                    className="relative z-[1] max-w-full max-h-full object-contain p-2 drop-shadow-md"
+                    onError={(e) => { (e.currentTarget as HTMLElement).style.display = 'none'; }}
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* フッター操作 */}
+            <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border)]">
+              <button
+                type="button"
+                onClick={() => setShowReceiptEditModal(false)}
+                className="text-xs px-3 py-1.5 rounded-lg bg-[var(--bg-card2)] text-[var(--text-sub)]"
+              >
+                キャンセル
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveReceiptEdit}
+                className="text-xs px-5 py-2 rounded-xl font-bold bg-[var(--accent)] text-white shadow"
+              >
+                💾 変更を保存
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── ➕ 手動アイテム追加モーダル（サッカー試合・読書・服・家電） ── */}
       {showManualModal && (
         <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4">
@@ -1185,6 +1826,32 @@ export default function ValueInventoryTab() {
                 className="text-xs p-2.5 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
               />
             </div>
+
+            {/* 読書記録の場合：著者名 ＆ 発行年月（任意） */}
+            {manualCategory === 'book' && (
+              <div className="grid grid-cols-2 gap-2.5 p-2.5 rounded-xl bg-[var(--bg-card2)] border border-[var(--border)]">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-semibold text-[var(--text-sub)]">著者名（任意）:</label>
+                  <input
+                    type="text"
+                    placeholder="例: アンディ・ウィアー"
+                    value={manualAuthor}
+                    onChange={(e) => setManualAuthor(e.target.value)}
+                    className="text-xs p-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)]"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-semibold text-[var(--text-sub)]">発行年月（任意）:</label>
+                  <input
+                    type="text"
+                    placeholder="例: 2021-12"
+                    value={manualPublishedDate}
+                    onChange={(e) => setManualPublishedDate(e.target.value)}
+                    className="text-xs p-2 rounded-lg border border-[var(--border)] bg-[var(--bg-card)] text-[var(--text)]"
+                  />
+                </div>
+              </div>
+            )}
 
             {/* 日付 ＆ 時間/金額 */}
             <div className="grid grid-cols-2 gap-3">
@@ -1522,6 +2189,19 @@ export default function ValueInventoryTab() {
                   🗑
                 </button>
 
+                {/* 編集ボタン */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditingReceiptItem({ ...item });
+                    setShowReceiptEditModal(true);
+                  }}
+                  className="absolute bottom-2.5 left-2.5 text-[11px] px-2.5 py-1 rounded-lg bg-black/70 hover:bg-black text-white opacity-90 sm:opacity-0 sm:group-hover:opacity-100 transition-all backdrop-blur shadow flex items-center gap-1 z-10 font-bold"
+                  title="アイテム情報を編集（品名・カテゴリ・著者・金額など）"
+                >
+                  ✏️ 編集
+                </button>
+
                 {/* 画像編集ボタン */}
                 <button
                   onClick={() => {
@@ -1548,6 +2228,25 @@ export default function ValueInventoryTab() {
                   <h3 className="text-sm font-bold text-[var(--text)] leading-snug line-clamp-2">
                     {item.name}
                   </h3>
+
+                  {/* 読書記録の場合：著者名 ＆ 発行年月 */}
+                  {item.category === 'book' && (item.author || item.publishedDate) && (
+                    <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1 text-xs text-[var(--text-sub)] bg-[var(--bg-card2)]/80 px-2.5 py-1.5 rounded-lg border border-[var(--border)]">
+                      {item.author && (
+                        <span className="flex items-center gap-1 font-bold text-[var(--text)]">
+                          <span className="text-[11px]">👤</span>
+                          <span>{item.author}</span>
+                        </span>
+                      )}
+                      {item.publishedDate && (
+                        <span className="flex items-center gap-1 text-[11px] text-[var(--text-muted)] font-medium">
+                          <span>📖</span>
+                          <span>発行: {item.publishedDate}</span>
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   <p className="text-xs text-[var(--text-muted)]">{item.store}</p>
                   {item.notes && (
                     <p className="text-xs text-[var(--text-sub)] bg-[var(--bg-card2)] p-2 rounded-lg leading-relaxed line-clamp-3">
