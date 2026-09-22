@@ -258,6 +258,7 @@ export function isExcludedLifeExpense(name: string, store: string): boolean {
   const foodKeywords = [
     'セブン', 'seven', 'ローソン', 'lawson', 'ファミリーマート', 'ファミマ', 'familymart', 'ミニストップ', 'デイリーヤマザキ',
     'スーパー', 'イオン', '西友', 'ライフ', '成城石井', '業務スーパー', 'オオゼキ', 'ヤオコー', 'まいばすけっと', 'マルエツ', 'サミット', 'いなげや', '東急ストア',
+    'ヨーカドー', 'イトーヨーカドー',
     'スターバックス', 'スタバ', 'starbucks', 'ドトール', 'doutor', 'タリーズ', 'tullys', 'コメダ', 'サンマルク', 'ベローチェ',
     'マクドナルド', 'マック', 'mcdonald', 'モスバーガー', 'ケンタッキー', 'kfc', 'すき家', '吉野家', '松屋', 'サイゼリヤ', 'デニーズ', 'ガスト', '大戸屋', 'やよい軒',
     'ランチ', 'ディナー', 'カフェ', 'cafe', '居酒屋', '酒場', 'バル', '食堂', 'ベーカリー', 'パン屋', '弁当', 'うどん', 'そば', 'ラーメン', '寿司', '焼肉',
@@ -279,6 +280,141 @@ export function isExcludedLifeExpense(name: string, store: string): boolean {
   ];
 
   return [...foodKeywords, ...dailyKeywords, ...utilityKeywords].some((kw) => combined.includes(kw));
+}
+
+export interface DuplicateCheckCandidate {
+  date: string;
+  store?: string;
+  name: string;
+  amount: number;
+}
+
+export interface DuplicateCheckTarget {
+  id?: string;
+  date: string;
+  store?: string;
+  name: string;
+  amount: number;
+  deleted?: boolean;
+}
+
+export function normalizeDateStr(d: string): string {
+  if (!d) return '';
+  const clean = d.trim().replace(/\//g, '-');
+  const parts = clean.split('-');
+  if (parts.length === 3) {
+    return `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+  }
+  return clean;
+}
+
+export function cleanTextForComparison(s: string): string {
+  if (!s) return '';
+  return s
+    .toLowerCase()
+    .replace(/[【】\[\]（）()・、。\s_\-–—]/g, '')
+    .trim();
+}
+
+export function isNameSimilar(a: string, b: string): boolean {
+  const ca = cleanTextForComparison(a);
+  const cb = cleanTextForComparison(b);
+  if (!ca || !cb) return false;
+  if (ca === cb) return true;
+  if (ca.includes(cb) || cb.includes(ca)) return true;
+
+  // 2文字以上の共通バイグラム比較
+  if (ca.length >= 3 && cb.length >= 3) {
+    let matches = 0;
+    for (let i = 0; i < ca.length - 1; i++) {
+      const gram = ca.slice(i, i + 2);
+      if (cb.includes(gram)) matches++;
+    }
+    const ratio = (matches * 2) / (ca.length + cb.length);
+    if (ratio >= 0.35) return true;
+  }
+  return false;
+}
+
+export function isStoreSimilar(a: string, b: string): boolean {
+  const ca = cleanTextForComparison(a);
+  const cb = cleanTextForComparison(b);
+  if (!ca || !cb) return false;
+  return ca === cb || ca.includes(cb) || cb.includes(ca);
+}
+
+export function daysDiff(d1: string, d2: string): number {
+  try {
+    const t1 = new Date(d1).getTime();
+    const t2 = new Date(d2).getTime();
+    if (isNaN(t1) || isNaN(t2)) return 999;
+    return Math.abs(Math.round((t1 - t2) / (1000 * 60 * 60 * 24)));
+  } catch {
+    return 999;
+  }
+}
+
+/**
+ * 登録済みアイテムとの重複チェック
+ * - 同一日付 & 同一金額 & (店舗一致 または 品名類似/包含 または 金額>0)
+ * - 2日以内 & 同一金額 & 品名類似
+ * - 30日以内 & 同一金額 & 品名完全一致
+ */
+export function findDuplicateReceiptItem(
+  candidate: DuplicateCheckCandidate,
+  existingItems: DuplicateCheckTarget[],
+  usedIds: Set<string> = new Set()
+): DuplicateCheckTarget | null {
+  const cDate = normalizeDateStr(candidate.date);
+  const cAmt = Math.abs(candidate.amount || 0);
+  const cName = candidate.name || '';
+  const cStore = candidate.store || '';
+
+  for (const item of existingItems) {
+    const itemId = item.id || `${item.date}-${item.name}-${item.amount}`;
+    if (usedIds.has(itemId)) continue;
+
+    const iDate = normalizeDateStr(item.date);
+    const iAmt = Math.abs(item.amount || 0);
+    const iName = item.name || '';
+    const iStore = item.store || '';
+
+    const diff = daysDiff(cDate, iDate);
+    const amtMatches = cAmt === iAmt;
+
+    // 1. 同一日付 & 同一金額
+    if (diff === 0 && amtMatches) {
+      // 1-a. 店舗名が一致または包含
+      if (cStore && iStore && isStoreSimilar(cStore, iStore)) {
+        usedIds.add(itemId);
+        return item;
+      }
+      // 1-b. 品名が類似または包含
+      if (isNameSimilar(cName, iName)) {
+        usedIds.add(itemId);
+        return item;
+      }
+      // 1-c. 金額が0より大きく、どちらかの店舗名・品名が空または類似
+      if (cAmt > 0 && (!cStore || !iStore || isStoreSimilar(cStore, iStore))) {
+        usedIds.add(itemId);
+        return item;
+      }
+    }
+
+    // 2. 日付が前後2日以内 & 同一金額 & 品名が類似（カード決済日ズレの救済）
+    if (diff <= 2 && amtMatches && isNameSimilar(cName, iName)) {
+      usedIds.add(itemId);
+      return item;
+    }
+
+    // 3. 品名完全一致（記号正規化後） & 同一金額 & 30日以内
+    if (amtMatches && cleanTextForComparison(cName) === cleanTextForComparison(iName) && diff <= 30) {
+      usedIds.add(itemId);
+      return item;
+    }
+  }
+
+  return null;
 }
 
 /** Gemini支出仕分けプロンプト定数 */
@@ -479,6 +615,7 @@ export interface ParsedImportResult {
   receipts: ReceiptItem[];
   viewings: ViewingItem[];
   skippedCount: number;
+  duplicateCount: number;
   skippedSamples: string[];
 }
 
@@ -487,13 +624,16 @@ export interface ParsedImportResult {
  * 形式1 (購入): 日付,店舗名,商品名,金額
  * 形式2 (視聴): 日付,媒体(Prime Video/Netflix等),作品名,時間(分),価値タグ(任意)
  * ※生活費・食費・日用品・交通費・公共料金などは自動でスキップ（除外）されます。
+ * ※既存登録済みアイテムとの重複も自動検知・除外されます。
  */
-export function parseImportCSV(csvText: string): ParsedImportResult {
+export function parseImportCSV(csvText: string, existingReceipts: ReceiptItem[] = []): ParsedImportResult {
   const lines = csvText.split(/\r?\n/).filter((l) => l.trim().length > 0);
   const receipts: ReceiptItem[] = [];
   const viewings: ViewingItem[] = [];
   const skippedSamples: string[] = [];
   let skippedCount = 0;
+  let duplicateCount = 0;
+  const usedExistingIds = new Set<string>();
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -557,6 +697,19 @@ export function parseImportCSV(csvText: string): ParsedImportResult {
         continue;
       }
 
+      // 既存登録済みアイテムとの重複チェック
+      if (existingReceipts.length > 0) {
+        const dup = findDuplicateReceiptItem(
+          { date, store: storeOrPlatform, name: nameOrTitle, amount: num },
+          existingReceipts,
+          usedExistingIds
+        );
+        if (dup) {
+          duplicateCount++;
+          continue;
+        }
+      }
+
       const { category, valueTag } = guessCategoryAndValue(nameOrTitle, storeOrPlatform);
       const { season, clothingCategory } = guessSeasonAndClothingCategory(nameOrTitle);
 
@@ -575,5 +728,5 @@ export function parseImportCSV(csvText: string): ParsedImportResult {
     }
   }
 
-  return { receipts, viewings, skippedCount, skippedSamples };
+  return { receipts, viewings, skippedCount, duplicateCount, skippedSamples };
 }

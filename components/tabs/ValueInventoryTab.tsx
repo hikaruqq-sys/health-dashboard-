@@ -172,7 +172,11 @@ export default function ValueInventoryTab() {
     season?: ClothingSeason;
     selected?: boolean;
   }[]>([]);
-  const [classifyStats, setClassifyStats] = useState<{ total: number; skipped: number }>({ total: 0, skipped: 0 });
+  const [classifyStats, setClassifyStats] = useState<{ total: number; skipped: number; duplicates: number }>({
+    total: 0,
+    skipped: 0,
+    duplicates: 0,
+  });
 
   // ── カードごとのフル編集用状態 ──
   const [editingReceiptItem, setEditingReceiptItem] = useState<ReceiptItem | null>(null);
@@ -224,6 +228,7 @@ export default function ValueInventoryTab() {
       const next = [newItem, ...viewings];
       setViewings(next);
       saveViewingItems(next);
+      autoPushToCloud(receipts, next, `手動追加: ${newItem.title}`);
     } else {
       const amount = parseInt(manualDurationOrAmount.replace(/[^\d]/g, ''), 10) || 0;
       const newItem: ReceiptItem = {
@@ -244,9 +249,18 @@ export default function ValueInventoryTab() {
       const next = [newItem, ...receipts];
       setReceipts(next);
       saveReceiptItems(next);
+      saveItemOverride(newItem.id, newItem.name, {
+        author: newItem.author,
+        publishedDate: newItem.publishedDate,
+        category: newItem.category,
+        season: newItem.season,
+        clothingCategory: newItem.clothingCategory,
+        valueTag: newItem.valueTag,
+        rating: newItem.rating,
+      });
+      autoPushToCloud(next, viewings, `手動追加: ${newItem.name}`);
     }
 
-    // リセット
     setManualTitle('');
     setManualNotes('');
     setManualImageUrl('');
@@ -256,7 +270,7 @@ export default function ValueInventoryTab() {
     alert('アイテムを追加しました！');
   };
 
-  // ── AI仕分け（Gemini 3.6 Flash）の実行 ──
+  // ── AI仕分け（Gemini 3.6 Flash）の実行（登録済み重複を自動事前除外） ──
   const handleClassifyCSV = async (text: string) => {
     if (!text.trim()) {
       alert('CSVテキストが空です。');
@@ -264,20 +278,38 @@ export default function ValueInventoryTab() {
     }
     setIsClassifying(true);
     try {
+      // 登録済みアイテム一覧を重複検知用に対照送信
+      const existingItems = receipts.map((r) => ({
+        id: r.id,
+        date: r.date,
+        store: r.store || '',
+        name: r.name || '',
+        amount: r.amount || 0,
+        category: r.category,
+      }));
+
       const res = await fetch('/api/inventory/classify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ csvText: text }),
+        body: JSON.stringify({ csvText: text, existingItems }),
       });
       const json = await res.json();
       if (json.ok && Array.isArray(json.items)) {
         if (json.items.length === 0) {
-          alert(`対象となるアイテム（洋服・本・家電）が見つかりませんでした。\n（※生活費・食費など ${json.skippedCount || 0} 件が安全に除外されました）`);
+          const reasons = [];
+          if (json.duplicateCount > 0) reasons.push(`登録済み重複アイテム: ${json.duplicateCount} 件`);
+          if (json.skippedCount > 0) reasons.push(`生活費・食費等: ${json.skippedCount} 件`);
+          const reasonStr = reasons.length > 0 ? `\n（※${reasons.join('、')} を自動除外しました）` : '';
+          alert(`新規に対象となるアイテム（洋服・本・家電）は見つかりませんでした。${reasonStr}`);
           setIsClassifying(false);
           return;
         }
         setPendingClassifiedItems(json.items);
-        setClassifyStats({ total: json.totalInputLines || json.items.length, skipped: json.skippedCount || 0 });
+        setClassifyStats({
+          total: json.totalInputLines || json.items.length,
+          skipped: json.skippedCount || 0,
+          duplicates: json.duplicateCount || 0,
+        });
         setShowImport(false);
         setShowReviewModal(true);
       } else {
@@ -483,12 +515,16 @@ export default function ValueInventoryTab() {
     handleClassifyCSV(text);
   };
 
-  // テキストインポート（購入・視聴ログ両対応 ＆ 食費・生活費除外 ＆ 自動クラウド保存）
+  // テキストインポート（購入・視聴ログ両対応 ＆ 食費・生活費除外 ＆ 登録済み重複自動除外 ＆ 自動クラウド保存）
   const handleImportCSV = () => {
     if (!csvText.trim()) return;
-    const { receipts: newR, viewings: newV, skippedCount } = parseImportCSV(csvText);
+    const { receipts: newR, viewings: newV, skippedCount, duplicateCount } = parseImportCSV(csvText, receipts);
     if (newR.length === 0 && newV.length === 0) {
-      alert(`有効なアイテムを読み込めませんでした。形式を確認してください。${skippedCount > 0 ? `\n（※生活費・食費・日用品 ${skippedCount} 件が安全にスキップされました）` : ''}`);
+      const reasons = [];
+      if (duplicateCount > 0) reasons.push(`登録済み重複アイテム: ${duplicateCount} 件`);
+      if (skippedCount > 0) reasons.push(`生活費・食費等: ${skippedCount} 件`);
+      const reasonStr = reasons.length > 0 ? `\n（※${reasons.join('、')} を自動除外しました）` : '';
+      alert(`有効な新規アイテムを読み込めませんでした。${reasonStr}`);
       return;
     }
     let updatedReceipts = receipts;
@@ -507,8 +543,9 @@ export default function ValueInventoryTab() {
     setShowImport(false);
     // 自動でクラウドにも保存＆スナップショット記録
     autoPushToCloud(updatedReceipts, updatedViewings, 'テキストCSV取り込み');
-    const skipMsg = skippedCount > 0 ? `\n・生活費・食費・日用品・交通費（スキップ除外）: ${skippedCount} 件` : '';
-    alert(`取り込み完了！\n・購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件${skipMsg}\n\n☁️ クラウドへ自動同期しました（他端末でも自動反映されます）。`);
+    const dupMsg = duplicateCount > 0 ? `\n・登録済み重複（自動除外）: ${duplicateCount} 件` : '';
+    const skipMsg = skippedCount > 0 ? `\n・生活費・食費・日用品・交通費（除外）: ${skippedCount} 件` : '';
+    alert(`取り込み完了！\n・新規購入アイテム: ${newR.length} 件\n・視聴ログ: ${newV.length} 件${dupMsg}${skipMsg}\n\n☁️ クラウドへ自動同期しました（他端末でも自動反映されます）。`);
   };
 
   // 削除済みアイテム一覧
@@ -1084,7 +1121,7 @@ export default function ValueInventoryTab() {
                 </span>
                 <FileDropZone
                   label="CSVファイルを選択またはドロップ"
-                  hint="日付,店舗名,商品名,金額 のファイルを自動仕分け"
+                  hint="日付,店舗名,商品名,金額 を自動仕分け（登録済み重複・生活費は自動除外）"
                   onFiles={handleFileImport}
                 />
               </div>
@@ -1128,7 +1165,7 @@ export default function ValueInventoryTab() {
                     <span className="text-base animate-spin">⏳</span>
                     <span className="leading-relaxed">
                       <strong>Gemini 3.6 Flash が購買CSVを自動解析中...</strong><br />
-                      生活費・食費・日用品を安全にスキップし、洋服・本（著者名・発行年月Web補完）・家電ギアを抽出しています。
+                      登録済みアイテムの重複排除＆生活費・食費を自動スキップし、新規の洋服・本・家電ギアのみを抽出中...
                     </span>
                   </div>
                 )}
@@ -1275,8 +1312,15 @@ export default function ValueInventoryTab() {
                       {pendingClassifiedItems.filter((it) => it.selected).length} / {pendingClassifiedItems.length} 件選択中
                     </span>
                   </h3>
-                  <p className="text-[11px] text-[var(--text-muted)]">
-                    生活費・食費 {classifyStats.skipped} 件が安全に除外されました。取り込むアイテムを確認・修正してください。
+                  <p className="text-[11px] text-[var(--text-muted)] flex items-center gap-1.5 flex-wrap">
+                    {classifyStats.duplicates > 0 && (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-400 font-bold border border-emerald-500/30">
+                        <span>✨</span> 登録済み重複 {classifyStats.duplicates} 件を自動除外
+                      </span>
+                    )}
+                    <span>
+                      生活費・食費 {classifyStats.skipped} 件が安全に除外されました。新規追加するアイテムを確認・修正してください。
+                    </span>
                   </p>
                 </div>
               </div>

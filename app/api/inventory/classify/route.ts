@@ -1,5 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { isExcludedLifeExpense, guessCategoryAndValue, guessSeasonAndClothingCategory } from '@/lib/inventory';
+import {
+  isExcludedLifeExpense,
+  guessCategoryAndValue,
+  guessSeasonAndClothingCategory,
+  findDuplicateReceiptItem,
+  DuplicateCheckTarget,
+} from '@/lib/inventory';
 
 export interface ClassifiedItem {
   id: string;
@@ -26,7 +32,7 @@ const CANDIDATE_MODELS = [
 
 export async function POST(req: NextRequest) {
   try {
-    const { csvText } = await req.json();
+    const { csvText, existingItems } = await req.json();
     if (!csvText || typeof csvText !== 'string') {
       return NextResponse.json({ error: 'CSVテキストが提供されていません。' }, { status: 400 });
     }
@@ -37,26 +43,47 @@ export async function POST(req: NextRequest) {
       .filter((l) => l.length > 0 && !l.startsWith('#') && !l.startsWith('日付') && !l.startsWith('Date'));
 
     if (rawLines.length === 0) {
-      return NextResponse.json({ ok: true, items: [], skippedCount: 0 });
+      return NextResponse.json({ ok: true, items: [], skippedCount: 0, duplicateCount: 0 });
     }
 
-    // 1. スーパー・コンビニ・外食・飲食・日用品の明らかな生活費を事前高速スキップ
+    // 1. スーパー・コンビニ・外食・飲食・日用品の生活費 ＆ 登録済み重複アイテムを事前高速スキップ
     const candidateLines: string[] = [];
     let preSkippedCount = 0;
+    let duplicateCount = 0;
+    const usedExistingIds = new Set<string>();
+    const existingList: DuplicateCheckTarget[] = Array.isArray(existingItems) ? existingItems : [];
 
     for (const line of rawLines) {
       const parts = line.split(',').map((p) => p.trim());
       if (parts.length >= 3) {
+        const dateStr = parts[0] || '';
         const store = parts[1] || '';
         const name = parts[2] || '';
+        const amount = parseInt((parts[3] || '0').replace(/[^\d-]/g, ''), 10) || 0;
+
+        // (1) 生活費・食費・日用品のスキップ
         if (isExcludedLifeExpense(name, store)) {
           preSkippedCount++;
           continue;
+        }
+
+        // (2) 既存アイテムとの重複スキップ
+        if (existingList.length > 0) {
+          const dup = findDuplicateReceiptItem(
+            { date: dateStr, store, name, amount },
+            existingList,
+            usedExistingIds
+          );
+          if (dup) {
+            duplicateCount++;
+            continue;
+          }
         }
       }
       candidateLines.push(line);
     }
 
+    // 新規候補がない場合はGeminiを呼ばずに即座に完了返却（超高速化）
     if (candidateLines.length === 0) {
       return NextResponse.json({
         ok: true,
@@ -64,6 +91,7 @@ export async function POST(req: NextRequest) {
         totalInputLines: rawLines.length,
         classifiedCount: 0,
         skippedCount: preSkippedCount,
+        duplicateCount,
       });
     }
 
@@ -206,7 +234,7 @@ ${candidateLines.join('\n')}
       };
     });
 
-    const skippedCount = Math.max(0, rawLines.length - items.length);
+    const skippedCount = Math.max(0, rawLines.length - items.length - duplicateCount);
 
     return NextResponse.json({
       ok: true,
@@ -214,6 +242,7 @@ ${candidateLines.join('\n')}
       totalInputLines: rawLines.length,
       classifiedCount: items.length,
       skippedCount,
+      duplicateCount,
     });
   } catch (e: any) {
     console.error('Classification error:', e);
