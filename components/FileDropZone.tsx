@@ -7,12 +7,14 @@ export default function FileDropZone({
   label,
   hint,
   multiple = false,
+  accept,
   busyLabel = '読み込み中...',
   onFiles,
 }: {
   label: string;
   hint?: string;
   multiple?: boolean;
+  accept?: string;
   busyLabel?: string;
   onFiles: (files: File[]) => Promise<void> | void;
 }) {
@@ -43,7 +45,7 @@ export default function FileDropZone({
       <input
         ref={inputRef}
         type="file"
-        accept=".csv,text/csv"
+        accept={accept}
         multiple={multiple}
         className="hidden"
         onChange={(e) => handle(e.target.files)}

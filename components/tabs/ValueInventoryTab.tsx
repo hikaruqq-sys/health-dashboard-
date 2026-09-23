@@ -153,6 +153,7 @@ export default function ValueInventoryTab() {
   // Daily Log 反映用
   const [showDailyLogModal, setShowDailyLogModal] = useState(false);
   const [dailyLogInput, setDailyLogInput] = useState('');
+  const [isApplyingDailyLog, setIsApplyingDailyLog] = useState(false);
   const [matchSummary, setMatchSummary] = useState<MatchResult | null>(null);
 
   // ── AI仕分け（Gemini 3.6 Flash）＆ 取り込み前プレビュー用状態 ──
@@ -404,33 +405,58 @@ export default function ValueInventoryTab() {
   };
 
   // Daily Log の解析と反映実行（重複自動排除 ＆ クラウド自動同期）
-  const handleApplyDailyLog = (text: string) => {
-    if (!text.trim()) return;
-    const { nextReceipts, nextViewings, result } = matchDailyLogToItems(text, receipts, viewings);
-    setReceipts(nextReceipts);
-    setViewings(nextViewings);
-    saveReceiptItems(nextReceipts);
-    saveViewingItems(nextViewings);
+  const handleApplyDailyLog = async (text: string) => {
+    if (!text.trim()) {
+      alert('ログテキストが空です。');
+      return;
+    }
+    setIsApplyingDailyLog(true);
+    try {
+      const { nextReceipts, nextViewings, result } = matchDailyLogToItems(text, receipts, viewings);
+      setReceipts(nextReceipts);
+      setViewings(nextViewings);
+      saveReceiptItems(nextReceipts);
+      saveViewingItems(nextViewings);
 
-    // 更新されたアイテムの感想（notes）を永続オーバーライドにも確実に保存
-    result.updatedReceipts.forEach((u) => {
-      const it = nextReceipts.find((r) => r.id === u.id);
-      if (it && it.notes) {
-        saveItemOverride(it.id, it.name, { notes: it.notes });
+      // 更新されたアイテムの感想（notes）を永続オーバーライドにも確実に保存
+      result.updatedReceipts.forEach((u) => {
+        const it = nextReceipts.find((r) => r.id === u.id);
+        if (it && it.notes) {
+          saveItemOverride(it.id, it.name, { notes: it.notes });
+        }
+      });
+      result.updatedViewings.forEach((u) => {
+        const it = nextViewings.find((v) => v.id === u.id);
+        if (it && it.notes) {
+          saveItemOverride(it.id, it.title, { notes: it.notes });
+        }
+      });
+
+      // クラウドにも即時自動保存＆スナップショット
+      await autoPushToCloud(nextReceipts, nextViewings, 'Daily Log感想同期');
+
+      setMatchSummary(result);
+      setDailyLogInput('');
+
+      const totalMatched = result.updatedReceipts.length + result.updatedViewings.length + result.newViewings.length;
+      if (totalMatched === 0 && result.skippedDuplicates === 0) {
+        alert('Daily Log解析完了: ログ内に登録済みアイテム（本・洋服・家電・作品）と一致するキーワードが見つかりませんでした。\n※アイテム名や作品名がリストに登録されているかご確認ください。');
+      } else {
+        const updatedTotal = result.updatedReceipts.length + result.updatedViewings.length;
+        const newTotal = result.newViewings.length;
+        const skipTotal = result.skippedDuplicates;
+        let msg = `✅ Daily Logの同期が完了しました！\n・アイテム感想の更新: ${updatedTotal} 件\n・新規視聴作品: ${newTotal} 件`;
+        if (skipTotal > 0) {
+          msg += `\n・登録済みの重複ログ: ${skipTotal} 件（自動スキップ）`;
+        }
+        msg += '\n\n☁️ クラウドへ自動同期しました（他端末でも自動反映されます）。';
+        alert(msg);
       }
-    });
-    result.updatedViewings.forEach((u) => {
-      const it = nextViewings.find((v) => v.id === u.id);
-      if (it && it.notes) {
-        saveItemOverride(it.id, it.title, { notes: it.notes });
-      }
-    });
-
-    // クラウドにも即時自動保存＆スナップショット
-    autoPushToCloud(nextReceipts, nextViewings, 'Daily Log感想同期');
-
-    setMatchSummary(result);
-    setDailyLogInput('');
+    } catch (e: any) {
+      alert('Daily Log同期エラー: ' + (e?.message || e));
+    } finally {
+      setIsApplyingDailyLog(false);
+    }
   };
 
   // 洋服のフィルター状態（Notion連動）
@@ -2077,25 +2103,40 @@ export default function ValueInventoryTab() {
 
             {/* ファイルドロップ */}
             <FileDropZone
-              label="daily_log.csv / lifelog をドロップ"
-              hint="月1回の思考・ライフログを直接解析（登録済みの重複は自動スキップ）"
+              label="DailyLog / ログファイルを選択"
+              hint="55KB以上の長文ファイルもそのまま選択可能（拡張子不問、タップでファイル選択）"
+              accept="*/*"
               onFiles={async (files) => {
                 if (files.length === 0) return;
-                const text = await files[0].text();
-                handleApplyDailyLog(text);
+                try {
+                  const text = await files[0].text();
+                  await handleApplyDailyLog(text);
+                } catch (e: any) {
+                  alert('ファイル読み込みエラー: ' + (e?.message || e));
+                }
               }}
             />
 
             {/* またはテキスト貼り付け */}
             <div className="flex flex-col gap-1.5">
-              <span className="text-xs font-semibold text-[var(--text-sub)]">またはテキストを貼り付け:</span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-[var(--text-sub)]">またはテキストを貼り付け:</span>
+                {dailyLogInput.length > 0 && (
+                  <span className="text-[10px] text-indigo-500 font-bold">
+                    {dailyLogInput.length.toLocaleString()} 文字入力中
+                  </span>
+                )}
+              </div>
               <textarea
-                rows={4}
+                rows={5}
                 value={dailyLogInput}
                 onChange={(e) => setDailyLogInput(e.target.value)}
                 placeholder="2026-02-20 言語沼最高すぎるなあ。オノマトペは偉大。&#10;2026-08-16 買ったモバイル高圧洗浄機で洗車を楽しむ。最高だった。ケルヒャー"
                 className="text-xs font-mono p-3 rounded-xl border border-[var(--border)] bg-[var(--bg-card2)] text-[var(--text)]"
               />
+              <span className="text-[10px] text-[var(--text-muted)]">
+                ※文字数制限はありません（数万文字・年間の全文ログもそのまま解析可能）。iPhoneの場合は上部のファイル選択が最も簡単でスムーズです。
+              </span>
             </div>
 
             {/* 解析結果サマリー */}
@@ -2125,17 +2166,26 @@ export default function ValueInventoryTab() {
 
             <div className="flex justify-end gap-2 pt-2 border-t border-[var(--border)]">
               <button
+                type="button"
                 onClick={() => setShowDailyLogModal(false)}
                 className="text-xs px-3 py-1.5 rounded-lg bg-[var(--bg-card2)] text-[var(--text-sub)]"
               >
                 閉じる
               </button>
               <button
+                type="button"
                 onClick={() => handleApplyDailyLog(dailyLogInput)}
-                disabled={!dailyLogInput.trim()}
-                className="text-xs px-4 py-1.5 rounded-lg font-bold bg-[var(--accent)] text-white disabled:opacity-50 transition-opacity"
+                disabled={!dailyLogInput.trim() || isApplyingDailyLog}
+                className="text-xs px-4 py-1.5 rounded-lg font-bold bg-[var(--accent)] text-white disabled:opacity-50 transition-opacity flex items-center gap-1.5"
               >
-                テキストを解析して同期する
+                {isApplyingDailyLog ? (
+                  <>
+                    <span className="animate-spin inline-block">⏳</span>
+                    <span>解析・同期中...</span>
+                  </>
+                ) : (
+                  <span>テキストを解析して同期する</span>
+                )}
               </button>
             </div>
           </div>

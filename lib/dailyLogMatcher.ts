@@ -60,10 +60,14 @@ export function matchDailyLogToItems(
   const newViewings: ViewingItem[] = [];
   let skippedDuplicates = 0;
 
+  let currentLogDate = '';
   for (const line of lines) {
     // 日付抽出 (YYYY-MM-DD または YYYY/MM/DD)
     const dateMatch = line.match(/^(\d{4}[-/]\d{1,2}[-/]\d{1,2})/);
-    const logDate = dateMatch ? dateMatch[1].replace(/\//g, '-') : '';
+    if (dateMatch) {
+      currentLogDate = dateMatch[1].replace(/\//g, '-');
+    }
+    const logDate = currentLogDate;
     const content = line.replace(/^\d{4}[-/]\d{1,2}[-/]\d{1,2}[,\s\d:]*/, '').trim();
     if (!content) continue;
 
