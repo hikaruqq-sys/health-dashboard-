@@ -4,12 +4,10 @@ import { loadWidgetData } from '@/lib/store';
 // Read-only endpoint consumed by the Scriptable widget.
 // Protected by a shared secret so the personal data isn't public.
 export async function GET(req: NextRequest) {
-  const secret = process.env.WIDGET_SECRET;
-  if (secret) {
-    const key = req.nextUrl.searchParams.get('key');
-    if (key !== secret) {
-      return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
-    }
+  const secret = process.env.WIDGET_SECRET || "0a0b42d75ffabbd9acd1e5fa2fe80df0";
+  const key = req.nextUrl.searchParams.get('key');
+  if (key !== secret) {
+    return NextResponse.json({ error: 'unauthorized' }, { status: 401 });
   }
 
   try {
