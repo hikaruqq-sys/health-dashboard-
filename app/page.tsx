@@ -17,6 +17,7 @@ import LibraryTab from '@/components/tabs/LibraryTab';
 import ValueInventoryTab from '@/components/tabs/ValueInventoryTab';
 import { useTheme } from '@/components/ThemeProvider';
 import { BodyMetric, DailyNutrition, MealEntry } from '@/types';
+import { supabase } from '@/lib/supabase';
 
 const PERIOD_OPTIONS = [
   { label: '1ヶ月', days: 30 },
@@ -71,7 +72,8 @@ export default function Dashboard() {
   }, [period]);
 
   const loadMeals = useCallback(async () => {
-    // Restore previously imported meal data from localStorage first
+    // 1. まず localStorage にキャッシュがあれば高速初期表示
+    let hasLocal = false;
     try {
       const stored = localStorage.getItem('meal_nutrition');
       if (stored) {
@@ -80,19 +82,53 @@ export default function Dashboard() {
           setNutrition(parsed);
           setIsMealMock(false);
           setSelectedDay(parsed[parsed.length - 1]);
+          hasLocal = true;
+        }
+      }
+    } catch {
+      // ignore corrupt storage
+    }
+
+    // 2. クラウド（Supabase / /api/meals/sync）から最新データをフェッチして同期
+    try {
+      const res = await fetch('/api/meals/sync');
+      if (res.ok) {
+        const json = await res.json();
+        if (Array.isArray(json.daily) && json.daily.length > 0) {
+          setNutrition(json.daily);
+          setIsMealMock(false);
+          setSelectedDay((prev) => {
+            if (prev) {
+              const updated = json.daily.find((d: DailyNutrition) => d.date === prev.date);
+              if (updated) return updated;
+            }
+            return json.daily[json.daily.length - 1];
+          });
+          try {
+            localStorage.setItem('meal_nutrition', JSON.stringify(json.daily));
+          } catch {
+            // ignore
+          }
           return;
         }
       }
     } catch {
-      // ignore corrupt storage and fall through to mock
+      // オフライン等の場合は localStorage のまま継続
     }
-    // No saved data yet → show mock sample from server
-    const res = await fetch('/api/meals?days=14');
-    const json = await res.json();
-    setNutrition(json.daily ?? []);
-    setMealEntries(json.entries ?? []);
-    setIsMealMock(json.mock ?? false);
-    setSelectedDay(json.daily?.[json.daily.length - 1] ?? null);
+
+    // 3. ローカルにもクラウドにもデータが何もない場合はデモ用モックを表示
+    if (!hasLocal) {
+      try {
+        const res = await fetch('/api/meals?days=14');
+        const json = await res.json();
+        setNutrition(json.daily ?? []);
+        setMealEntries(json.entries ?? []);
+        setIsMealMock(json.mock ?? false);
+        setSelectedDay(json.daily?.[json.daily.length - 1] ?? null);
+      } catch {
+        // ignore
+      }
+    }
   }, []);
 
   // PC用とモバイル用のレイアウトは常に両方DOMに存在する（CSSで片方を隠している）。
@@ -191,6 +227,16 @@ export default function Dashboard() {
         localStorage.setItem('meal_nutrition', JSON.stringify(merged));
       } catch {
         // storage full / unavailable — keep in-memory at least
+      }
+      if (supabase) {
+        supabase
+          .from('lifeplan_kv')
+          .upsert({
+            key: 'health_meal_nutrition',
+            data: merged,
+            updated_at: new Date().toISOString(),
+          })
+          .then();
       }
       return merged;
     });

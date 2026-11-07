@@ -24,10 +24,12 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. ウィジェット用APIはシークレットキーで認証通過可能
-  if (pathname === "/api/widget") {
-    const key = req.nextUrl.searchParams.get("key");
-    if (key === WIDGET_SECRET) {
+  // 2. ウィジェット・食事同期用APIはシークレットキーで認証通過可能
+  if (pathname === "/api/widget" || pathname === "/api/meals/sync") {
+    const key = req.nextUrl.searchParams.get("key") || req.headers.get("x-api-key");
+    const authHeader = req.headers.get("authorization");
+    const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (key === WIDGET_SECRET || bearerToken === WIDGET_SECRET) {
       return NextResponse.next();
     }
   }

@@ -1,5 +1,3 @@
-'use client';
-
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
 // money-dashboard / rio-rankings と同じ Supabase プロジェクトに相乗りする。
