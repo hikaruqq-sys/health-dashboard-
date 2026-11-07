@@ -108,9 +108,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 4. 未推定分を AI（Groq）で並列推定（最大30日ずつ、同時並列数6）
-    const targetDates = datesToEstimate.slice(-30);
-    const CONCURRENCY = 6;
+    // 4. 未推定分を AI（Groq）で推定（タイムアウト防止のため直近最大7日分ずつ）
+    const targetDates = datesToEstimate.slice(-7);
+    const CONCURRENCY = 3;
     const newEstimatedEntries: MealEntry[] = [];
 
     for (let i = 0; i < targetDates.length; i += CONCURRENCY) {
@@ -125,7 +125,7 @@ export async function POST(req: NextRequest) {
             return await estimateNutrition(dayFoods, date);
           } catch (err) {
             console.error(`Nutrition estimation failed for ${date}:`, err);
-            return dateGroups.get(date)!;
+            return [];
           }
         })
       );
@@ -133,9 +133,13 @@ export async function POST(req: NextRequest) {
     }
 
     // 5. 推定結果を DailyNutrition に変換してマージ
-    const newDaily = groupByDay(newEstimatedEntries);
-    for (const d of newDaily) {
-      existingMap.set(d.date, d);
+    if (newEstimatedEntries.length > 0) {
+      const newDaily = groupByDay(newEstimatedEntries);
+      for (const d of newDaily) {
+        if (d.totalCalories > 0) {
+          existingMap.set(d.date, d);
+        }
+      }
     }
 
     // AI推定を行わなかった過去の日付で、既存マップにないものはそのまま登録
