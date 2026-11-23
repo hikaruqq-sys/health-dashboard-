@@ -1036,7 +1036,126 @@ export default function HomeTab({
         </div>
       </div>
 
-      {/* ROW 3: 全アプリ・全24ページの統合ランキング ＆ アクセス有無・無駄診断 */}
+      {/* ROW 3: 今後やるべき修正点 ＆ 作るべきアプリの案（視認性向上・折り返し表示） */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+        <div
+          className="p-3.5 rounded-lg border space-y-2.5 shadow-sm"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-black">🛠️ 今後やるべき修正点</h3>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!taskIn.trim()) return;
+                const next = [taskIn.trim(), ...tasks];
+                setTasks(next);
+                setTaskIn('');
+                localStorage.setItem('agy_home_tasks_v5', JSON.stringify(next));
+              }}
+              className="flex gap-1 flex-shrink-0"
+            >
+              <input
+                type="text"
+                value={taskIn}
+                onChange={(e) => setTaskIn(e.target.value)}
+                placeholder="＋修正点を追加"
+                className="w-32 px-2 py-1 rounded border text-xs"
+                style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
+              />
+              <button
+                type="submit"
+                className="px-2.5 py-1 rounded font-black border text-xs"
+                style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
+              >
+                追加
+              </button>
+            </form>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 font-bold">
+            {tasks.map((t, i) => (
+              <span
+                key={`${t}-${i}`}
+                className="px-2.5 py-1 rounded-md border flex items-center gap-1.5 text-xs"
+                style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
+              >
+                <span>🛠️ {t}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = tasks.filter((_, idx) => idx !== i);
+                    setTasks(next);
+                    localStorage.setItem('agy_home_tasks_v5', JSON.stringify(next));
+                  }}
+                  className="opacity-60 hover:opacity-100"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div
+          className="p-3.5 rounded-lg border space-y-2.5 shadow-sm"
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <h3 className="text-sm font-black">💡 今後作るべきアプリの案</h3>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                if (!ideaIn.trim()) return;
+                const next = [`🚀 ${ideaIn.trim()}`, ...ideas];
+                setIdeas(next);
+                setIdeaIn('');
+                localStorage.setItem('agy_home_ideas_v5', JSON.stringify(next));
+              }}
+              className="flex gap-1 flex-shrink-0"
+            >
+              <input
+                type="text"
+                value={ideaIn}
+                onChange={(e) => setIdeaIn(e.target.value)}
+                placeholder="＋アプリアイデア"
+                className="w-32 px-2 py-1 rounded border text-xs"
+                style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
+              />
+              <button
+                type="submit"
+                className="px-2.5 py-1 rounded font-black border text-xs"
+                style={{ borderColor: 'var(--zelda-cyan)', color: 'var(--zelda-cyan)' }}
+              >
+                追加
+              </button>
+            </form>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5 font-bold">
+            {ideas.map((idea, i) => (
+              <span
+                key={`${idea}-${i}`}
+                className="px-2.5 py-1 rounded-md border flex items-center gap-1.5 text-xs"
+                style={{ background: 'var(--bg-card2)', borderColor: 'var(--zelda-cyan)' }}
+              >
+                <span>{idea}</span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const next = ideas.filter((_, idx) => idx !== i);
+                    setIdeas(next);
+                    localStorage.setItem('agy_home_ideas_v5', JSON.stringify(next));
+                  }}
+                  className="opacity-60 hover:opacity-100"
+                >
+                  ✕
+                </button>
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ROW 4: 全アプリ・全24ページの統合ランキング ＆ アクセス有無・無駄診断 */}
       <div
         className="p-3.5 rounded-lg border space-y-3 shadow-sm"
         style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
@@ -1370,117 +1489,6 @@ export default function HomeTab({
               })}
             </tbody>
           </table>
-        </div>
-      </div>
-
-      {/* ROW 4: NEXT TASKS & NEW APP IDEAS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
-        <div
-          className="p-2.5 rounded-lg border flex items-center justify-between gap-2"
-          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
-        >
-          <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap font-bold">
-            {tasks.map((t, i) => (
-              <span
-                key={`${t}-${i}`}
-                className="px-2 py-0.5 rounded border flex items-center gap-1"
-                style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
-              >
-                <span>🛠️{t}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = tasks.filter((_, idx) => idx !== i);
-                    setTasks(next);
-                    localStorage.setItem('agy_home_tasks_v5', JSON.stringify(next));
-                  }}
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
-          </div>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!taskIn.trim()) return;
-              const next = [taskIn.trim(), ...tasks];
-              setTasks(next);
-              setTaskIn('');
-              localStorage.setItem('agy_home_tasks_v5', JSON.stringify(next));
-            }}
-            className="flex gap-1 flex-shrink-0"
-          >
-            <input
-              type="text"
-              value={taskIn}
-              onChange={(e) => setTaskIn(e.target.value)}
-              placeholder="＋Next task"
-              className="w-28 px-2 py-0.5 rounded border"
-              style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
-            />
-            <button
-              type="submit"
-              className="px-2 py-0.5 rounded font-bold border"
-              style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
-            >
-              ＋
-            </button>
-          </form>
-        </div>
-
-        <div
-          className="p-2.5 rounded-lg border flex items-center justify-between gap-2"
-          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
-        >
-          <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap font-bold">
-            {ideas.map((idea, i) => (
-              <span
-                key={`${idea}-${i}`}
-                className="px-2 py-0.5 rounded border flex items-center gap-1"
-                style={{ background: 'var(--bg-card2)', borderColor: 'var(--zelda-cyan)' }}
-              >
-                <span>{idea}</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const next = ideas.filter((_, idx) => idx !== i);
-                    setIdeas(next);
-                    localStorage.setItem('agy_home_ideas_v5', JSON.stringify(next));
-                  }}
-                >
-                  ✕
-                </button>
-              </span>
-            ))}
-          </div>
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              if (!ideaIn.trim()) return;
-              const next = [`🚀${ideaIn.trim()}`, ...ideas];
-              setIdeas(next);
-              setIdeaIn('');
-              localStorage.setItem('agy_home_ideas_v5', JSON.stringify(next));
-            }}
-            className="flex gap-1 flex-shrink-0"
-          >
-            <input
-              type="text"
-              value={ideaIn}
-              onChange={(e) => setIdeaIn(e.target.value)}
-              placeholder="＋New app"
-              className="w-28 px-2 py-0.5 rounded border"
-              style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
-            />
-            <button
-              type="submit"
-              className="px-2 py-0.5 rounded font-bold border"
-              style={{ borderColor: 'var(--zelda-cyan)', color: 'var(--zelda-cyan)' }}
-            >
-              ＋
-            </button>
-          </form>
         </div>
       </div>
     </div>
