@@ -922,7 +922,7 @@ export default function HomeTab({
     .reduce((s, a) => s + a.mb, 0);
 
   return (
-    <div className="space-y-4 text-xs" style={{ color: 'var(--text)' }}>
+    <div className="max-w-7xl mx-auto space-y-3 text-xs" style={{ color: 'var(--text)' }}>
       {toastMsg && (
         <div
           className="fixed bottom-4 right-4 z-50 px-3.5 py-2 rounded-lg border-2 font-bold shadow-xl"
@@ -948,551 +948,486 @@ export default function HomeTab({
         }}
       />
 
-      {/* ROW 1: 期限別 CSV/データ取込ボタンバー */}
+      {/* TOP BAR: コンパクト CSV取込 & 漏れチェック */}
       <div
-        className="p-3 rounded-lg border space-y-2.5 shadow-sm"
+        className="px-3 py-2.5 rounded-lg border flex flex-wrap items-center justify-between gap-2 shadow-sm"
         style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
       >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5 flex-wrap">
-            <span className="text-sm font-black">📥 データ取込 &amp; 漏れチェック</span>
-            {overdueCount > 0 && (
-              <span
-                className="px-2 py-0.5 rounded font-black text-[11px] border"
-                style={{ background: 'rgba(239,68,68,0.2)', borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}
-              >
-                🚨 期限遅れ {overdueCount}件
-              </span>
-            )}
-            {dueTodayCount > 0 && (
-              <span
-                className="px-2 py-0.5 rounded font-black text-[11px] border"
-                style={{ background: 'rgba(217,168,78,0.2)', borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
-              >
-                ⚡ 今日が期限 {dueTodayCount}件
-              </span>
-            )}
-            <span
-              className="px-2 py-0.5 rounded font-bold text-[11px] border"
-              style={{ borderColor: 'var(--zelda-zonai)', color: 'var(--zelda-zonai)' }}
-            >
-              ✓ 完了 {doneCount}/{calItems.length} ({progressPct}%)
-            </span>
-          </div>
-
-          <div className="flex items-center gap-2 text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
-            {metrics.length > 0 && metrics[metrics.length - 1].weight != null && (
-              <span>⚖️ {metrics[metrics.length - 1].weight?.toFixed(1)}kg</span>
-            )}
-            {nutrition.length > 0 && (
-              <span>🍽️ {Math.round(nutrition[nutrition.length - 1].totalCalories)}kcal</span>
-            )}
-          </div>
-        </div>
-
         <div className="flex flex-wrap items-center gap-2">
-          {sortedCsvButtons.map((item) => {
-            const isOverdue = !item.done && item.day < TODAY;
-            const isToday = !item.done && item.day === TODAY;
-            const isFutureOrDone = item.done || item.day > TODAY;
+          <span className="text-xs font-black">📥 CSV取込:</span>
+          {overdueCount > 0 && (
+            <span
+              className="px-2 py-0.5 rounded font-black text-[10px] border"
+              style={{ background: 'rgba(239,68,68,0.2)', borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}
+            >
+              🚨 遅れ {overdueCount}
+            </span>
+          )}
+          {dueTodayCount > 0 && (
+            <span
+              className="px-2 py-0.5 rounded font-black text-[10px] border"
+              style={{ background: 'rgba(217,168,78,0.2)', borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
+            >
+              ⚡ 今日 {dueTodayCount}
+            </span>
+          )}
+          <span
+            className="px-2 py-0.5 rounded font-bold text-[10px] border"
+            style={{ borderColor: 'var(--zelda-zonai)', color: 'var(--zelda-zonai)' }}
+          >
+            ✓ {doneCount}/{calItems.length} ({progressPct}%)
+          </span>
 
-            return (
-              <div
-                key={item.id}
-                className={`flex items-center rounded-lg border-2 overflow-hidden transition ${
-                  isFutureOrDone ? 'gray-done' : isOverdue ? 'shadow-md' : ''
-                }`}
-                style={{
-                  background: isOverdue
-                    ? 'rgba(239,68,68,0.18)'
-                    : isToday
-                    ? 'rgba(217,168,78,0.2)'
-                    : 'var(--bg-card2)',
-                  borderColor: isOverdue
-                    ? 'var(--f1-soft)'
-                    : isToday
-                    ? 'var(--zelda-gold)'
-                    : 'var(--border)',
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    activeUploadIdRef.current = item.id;
-                    fileInputRef.current?.click();
-                  }}
-                  title={`${item.targetApp} へCSVを取り込む`}
-                  className="px-2.5 py-1.5 flex items-center gap-1.5 font-extrabold text-xs hover:opacity-80"
-                >
-                  <span>{item.icon}</span>
-                  <span>{item.label}</span>
-                  <span
-                    className="text-[10px] font-bold"
-                    style={{
-                      color: isOverdue ? 'var(--f1-soft)' : isToday ? 'var(--zelda-gold)' : 'var(--text-muted)',
-                    }}
-                  >
-                    {item.done
-                      ? '✓済'
-                      : isOverdue
-                      ? `🚨11/${item.day}遅`
-                      : isToday
-                      ? '⚡今日'
-                      : `11/${item.day}`}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => toggleQuest(item.id)}
-                  title={item.done ? '未完了に戻す' : '手動で完了(グレー)にする'}
-                  className="px-2 py-1.5 border-l text-[11px] font-black hover:bg-black/15"
-                  style={{ borderColor: 'var(--border)' }}
-                >
-                  {item.done ? '↩' : '✓'}
-                </button>
-              </div>
-            );
-          })}
-        </div>
-      </div>
+          <div className="flex flex-wrap items-center gap-1.5 ml-1">
+            {sortedCsvButtons.map((item) => {
+              const isOverdue = !item.done && item.day < TODAY;
+              const isToday = !item.done && item.day === TODAY;
+              const isFutureOrDone = item.done || item.day > TODAY;
 
-      {/* ROW 2: FULL-WIDTH LARGE NOVEMBER CALENDAR */}
-      <div
-        className="p-3.5 rounded-lg border space-y-2.5 shadow-sm"
-        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-black">📅 2026年11月 インプットカレンダー</h2>
-          <div className="flex items-center gap-3 text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
-            <span>🚨 赤枠＝期限遅れ</span>
-            <span>⚡ 金枠＝今日期限</span>
-            <span>⚪ グレー＝完了・期限前</span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-7 gap-2 text-center text-xs font-extrabold" style={{ color: 'var(--text-muted)' }}>
-          <span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span><span>日</span>
-        </div>
-
-        <div className="grid grid-cols-7 gap-2">
-          {Array.from({ length: 6 }).map((_, idx) => (
-            <div
-              key={`b-${idx}`}
-              className="rounded-lg border min-h-[76px] opacity-15"
-              style={{ borderStyle: 'dashed', borderColor: 'var(--border)' }}
-            />
-          ))}
-          {Array.from({ length: 30 }).map((_, idx) => {
-            const d = idx + 1;
-            const items = calItems.filter((c) => c.day === d);
-            const hasOverdue = items.some((c) => !c.done && d < TODAY);
-            const hasTodayDue = items.some((c) => !c.done && d === TODAY);
-            const allDone = items.length > 0 && items.every((c) => c.done);
-            const isFutureOnly = items.length > 0 && d > TODAY && !allDone;
-
-            return (
-              <div
-                key={d}
-                className={`p-2 rounded-lg border-2 min-h-[76px] flex flex-col justify-between transition ${
-                  allDone ? 'gray-done' : isFutureOnly ? 'opacity-60' : ''
-                }`}
-                style={{
-                  background: hasOverdue
-                    ? 'rgba(239,68,68,0.12)'
-                    : hasTodayDue
-                    ? 'rgba(217,168,78,0.12)'
-                    : 'var(--bg-card2)',
-                  borderColor:
-                    d === TODAY
-                      ? 'var(--zelda-gold)'
-                      : hasOverdue
-                      ? 'var(--f1-soft)'
-                      : 'var(--border)',
-                }}
-              >
+              return (
                 <div
-                  className="flex justify-between items-center text-[11px] font-black"
-                  style={{ color: d === TODAY ? 'var(--zelda-gold)' : hasOverdue ? 'var(--f1-soft)' : 'var(--text-muted)' }}
+                  key={item.id}
+                  className={`flex items-center rounded border overflow-hidden transition ${
+                    isFutureOrDone ? 'gray-done' : isOverdue ? 'border-2 shadow-sm' : 'border-2'
+                  }`}
+                  style={{
+                    background: isOverdue
+                      ? 'rgba(239,68,68,0.18)'
+                      : isToday
+                      ? 'rgba(217,168,78,0.2)'
+                      : 'var(--bg-card2)',
+                    borderColor: isOverdue
+                      ? 'var(--f1-soft)'
+                      : isToday
+                      ? 'var(--zelda-gold)'
+                      : 'var(--border)',
+                  }}
                 >
-                  <span>
-                    11/{d}
-                    {d === TODAY ? ' (今日)' : ''}
-                  </span>
-                  <span>{allDone ? '✓' : hasOverdue ? '🚨' : hasTodayDue ? '⚡' : ''}</span>
-                </div>
-                <div className="space-y-1 mt-1">
-                  {items.map((it) => (
-                    <button
-                      key={it.id}
-                      type="button"
-                      onClick={() => toggleQuest(it.id)}
-                      className={`w-full text-left text-[11px] font-extrabold px-1.5 py-1 rounded truncate ${
-                        it.done ? 'line-through opacity-50' : ''
-                      }`}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      activeUploadIdRef.current = item.id;
+                      fileInputRef.current?.click();
+                    }}
+                    title={`${item.targetApp} へCSVを取り込む`}
+                    className="px-2 py-1 flex items-center gap-1 font-extrabold text-[11px] hover:opacity-80"
+                  >
+                    <span>{item.icon}</span>
+                    <span>{item.label}</span>
+                    <span
+                      className="text-[10px] font-bold"
                       style={{
-                        background: it.done
-                          ? 'rgba(0,0,0,0.2)'
-                          : it.day < TODAY
-                          ? 'rgba(239,68,68,0.3)'
-                          : it.day === TODAY
-                          ? 'rgba(217,168,78,0.3)'
-                          : 'rgba(255,255,255,0.06)',
-                        borderLeft: `3px solid ${
-                          it.done
-                            ? 'var(--border)'
-                            : it.day < TODAY
-                            ? 'var(--f1-soft)'
-                            : it.day === TODAY
-                            ? 'var(--zelda-gold)'
-                            : 'var(--text-muted)'
-                        }`,
+                        color: isOverdue ? 'var(--f1-soft)' : isToday ? 'var(--zelda-gold)' : 'var(--text-muted)',
                       }}
                     >
-                      {it.done ? '✓ ' : ''}
-                      {it.icon} {it.label}
-                    </button>
-                  ))}
+                      {item.done ? '✓' : isOverdue ? `🚨11/${item.day}` : isToday ? '⚡今日' : `11/${item.day}`}
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => toggleQuest(item.id)}
+                    title={item.done ? '未完了に戻す' : '手動で完了(グレー)にする'}
+                    className="px-1.5 py-1 border-l text-[10px] font-black hover:bg-black/15"
+                    style={{ borderColor: 'var(--border)' }}
+                  >
+                    {item.done ? '↩' : '✓'}
+                  </button>
                 </div>
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
+          {metrics.length > 0 && metrics[metrics.length - 1].weight != null && (
+            <span>⚖️ {metrics[metrics.length - 1].weight?.toFixed(1)}kg</span>
+          )}
+          {nutrition.length > 0 && (
+            <span>🍽️ {Math.round(nutrition[nutrition.length - 1].totalCalories)}kcal</span>
+          )}
         </div>
       </div>
 
-      {/* ROW 3: 全アプリ・全24ページの統合ランキング ＆ アクセス有無・無駄診断 */}
-      <div
-        className="p-3.5 rounded-lg border space-y-3 shadow-sm"
-        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex flex-wrap items-center gap-2.5">
-            <h2 className="text-sm font-black">🕹️ 全アプリ・全24ページ 統合ランキング ＆ 無駄・死蔵診断</h2>
-            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold">
-              <span
-                className="px-2 py-0.5 rounded border"
-                style={{ background: 'rgba(111, 176, 135, 0.16)', borderColor: 'var(--zelda-zonai)', color: 'var(--zelda-zonai)' }}
-              >
-                🟢 稼働中 {auditCounts.active}ページ
-              </span>
-              <span
-                className="px-2 py-0.5 rounded border"
-                style={{ background: 'rgba(217, 168, 78, 0.16)', borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
-              >
-                🟡 低頻度・要確認 {auditCounts.underused}ページ
-              </span>
-              <span
-                className="px-2 py-0.5 rounded border"
-                style={{ background: 'rgba(239, 68, 68, 0.18)', borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}
-              >
-                🔴 無駄・死蔵 {auditCounts.wasted}ページ (削減可能 {(savedMB / 1024).toFixed(2)}GB)
-              </span>
+      {/* MAIN 2-COLUMN COCKPIT: 左(カレンダー＋修正/新規案) / 右(コンパクト全24ページランチャー) */}
+      <div className="grid grid-cols-1 xl:grid-cols-12 gap-3.5 items-start">
+        {/* LEFT COLUMN (5 cols): 視線移動の少ないコンパクトカレンダー ＋ 修正＆新規案 */}
+        <div className="xl:col-span-5 space-y-3.5">
+          {/* コンパクト 11月カレンダー */}
+          <div
+            className="p-3 rounded-lg border space-y-2 shadow-sm"
+            style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <h2 className="text-sm font-black">📅 2026年11月 カレンダー</h2>
+              <div className="flex items-center gap-2 text-[10px] font-bold" style={{ color: 'var(--text-muted)' }}>
+                <span>🚨遅れ</span>
+                <span>⚡今日</span>
+                <span>⚪済/前</span>
+              </div>
             </div>
-          </div>
 
-          <div className="flex items-center gap-2">
-            {deletedIds.length > 0 && (
-              <button
-                type="button"
-                onClick={() => {
-                  setDeletedIds([]);
-                  localStorage.setItem('agy_home_del_v5', '[]');
-                }}
-                className="px-2 py-1 rounded text-[11px] font-bold border"
-                style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
-              >
-                ↩ Restore ({deletedIds.length})
-              </button>
-            )}
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="🔍 ページ名・診断で検索..."
-              className="px-2.5 py-1 rounded border text-xs w-48"
-              style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
-            />
-          </div>
-        </div>
+            <div className="grid grid-cols-7 gap-1 text-center text-[10px] font-extrabold" style={{ color: 'var(--text-muted)' }}>
+              <span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span><span>日</span>
+            </div>
 
-        {/* スイート・無駄診断フィルタボタン */}
-        <div className="flex flex-wrap items-center gap-1.5">
-          {[
-            { id: 'all', label: `すべて表示 (${enrichedApps.length})` },
-            { id: 'money', label: '💰 Money 全ページ (6)' },
-            { id: 'lifelog', label: '🍎 Lifelog 全ページ (5)' },
-            { id: 'life', label: '🏃 Life 全ページ (2)' },
-            { id: 'other', label: '🎾 他アプリ (11)' },
-            { id: 'waste', label: `🚨 無駄・低頻度のみ (${auditCounts.underused + auditCounts.wasted})` },
-          ].map((f) => {
-            const active = suiteFilter === f.id;
-            return (
-              <button
-                key={f.id}
-                type="button"
-                onClick={() => setSuiteFilter(f.id as typeof suiteFilter)}
-                className="px-2.5 py-1 rounded-lg text-xs font-extrabold border transition"
-                style={{
-                  background: active ? 'var(--accent)' : 'var(--bg-card2)',
-                  borderColor: active ? 'var(--zelda-gold)' : 'var(--border)',
-                  color: active ? '#1e1a16' : 'var(--text)',
-                }}
-              >
-                {f.label}
-              </button>
-            );
-          })}
-        </div>
-
-        <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
-          <table className="w-full text-left text-xs border-collapse">
-            <thead style={{ background: '#212823', color: '#e4dac6' }}>
-              <tr>
-                <th className="py-2.5 px-3">順位 &amp; ページ名 (クリックで開く)</th>
-                <th className="py-2.5 px-3">区分</th>
-                <th className="py-2.5 px-3">Score</th>
-                <th className="py-2.5 px-3">アクセス頻度 ＆ 実測ログ</th>
-                <th className="py-2.5 px-3">稼働・無駄診断 (Audit)</th>
-                <th className="py-2.5 px-3">🎨 洗練度</th>
-                <th className="py-2.5 px-3">機能 / 容量</th>
-                <th className="py-2.5 px-3">操作</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
-              {visibleApps.map((a, idx) => {
-                const effectiveUrl = customUrls[a.id] ?? a.url;
-                const isEditing = editingUrlId === a.id;
-                const t = a.telemetry;
-
-                const statusBadge =
-                  t.wasteStatus === 'active'
-                    ? {
-                        label: '🟢 稼働中',
-                        bg: 'rgba(111, 176, 135, 0.16)',
-                        border: 'var(--zelda-zonai)',
-                        color: 'var(--zelda-zonai)',
-                      }
-                    : t.wasteStatus === 'underused'
-                    ? {
-                        label: '🟡 低頻度 (要確認)',
-                        bg: 'rgba(217, 168, 78, 0.18)',
-                        border: 'var(--zelda-gold)',
-                        color: 'var(--zelda-gold)',
-                      }
-                    : {
-                        label: '🔴 無駄・死蔵',
-                        bg: 'rgba(239, 68, 68, 0.20)',
-                        border: 'var(--f1-soft)',
-                        color: 'var(--f1-soft)',
-                      };
+            <div className="grid grid-cols-7 gap-1">
+              {Array.from({ length: 6 }).map((_, idx) => (
+                <div
+                  key={`b-${idx}`}
+                  className="rounded border min-h-[44px] opacity-15"
+                  style={{ borderStyle: 'dashed', borderColor: 'var(--border)' }}
+                />
+              ))}
+              {Array.from({ length: 30 }).map((_, idx) => {
+                const d = idx + 1;
+                const items = calItems.filter((c) => c.day === d);
+                const hasOverdue = items.some((c) => !c.done && d < TODAY);
+                const hasTodayDue = items.some((c) => !c.done && d === TODAY);
+                const allDone = items.length > 0 && items.every((c) => c.done);
+                const isFutureOnly = items.length > 0 && d > TODAY && !allDone;
 
                 return (
-                  <tr
-                    key={a.id}
-                    className={a.muted ? 'gray-done' : 'hover:bg-[var(--bg-card2)]'}
-                    style={{ background: 'var(--bg-card)' }}
+                  <div
+                    key={d}
+                    className={`p-1 rounded border min-h-[44px] flex flex-col justify-between transition ${
+                      allDone ? 'gray-done' : isFutureOnly ? 'opacity-65' : ''
+                    }`}
+                    style={{
+                      background: hasOverdue
+                        ? 'rgba(239,68,68,0.14)'
+                        : hasTodayDue
+                        ? 'rgba(217,168,78,0.14)'
+                        : 'var(--bg-card2)',
+                      borderColor:
+                        d === TODAY
+                          ? 'var(--zelda-gold)'
+                          : hasOverdue
+                          ? 'var(--f1-soft)'
+                          : 'var(--border)',
+                    }}
                   >
-                    <td className="py-2.5 px-3 font-black whitespace-nowrap">
-                      {isEditing ? (
-                        <input
-                          autoFocus
-                          defaultValue={effectiveUrl}
-                          placeholder="https://... or http://localhost:..."
-                          onBlur={(e) => {
-                            const val = e.target.value.trim();
-                            saveLinkUrl(a.id, val);
-                            setCustomUrls(loadLinkUrls());
-                            setEditingUrlId(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') e.currentTarget.blur();
-                          }}
-                          className="px-2 py-1 rounded border text-xs w-56"
-                          style={{ background: 'var(--bg-card2)', borderColor: 'var(--zelda-gold)' }}
-                        />
-                      ) : a.internalTab ? (
+                    <div
+                      className="flex justify-between items-center text-[9.5px] font-black leading-none"
+                      style={{ color: d === TODAY ? 'var(--zelda-gold)' : hasOverdue ? 'var(--f1-soft)' : 'var(--text-muted)' }}
+                    >
+                      <span>{d}{d === TODAY ? '★' : ''}</span>
+                      <span>{allDone ? '✓' : hasOverdue ? '🚨' : hasTodayDue ? '⚡' : ''}</span>
+                    </div>
+                    <div className="space-y-0.5 mt-0.5">
+                      {items.map((it) => (
                         <button
+                          key={it.id}
                           type="button"
-                          onClick={() => {
-                            recordAppClick(a.id);
-                            onNavigate(a.internalTab!);
-                          }}
-                          className="hover:underline text-left font-black flex items-center gap-1.5"
-                        >
-                          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>#{idx + 1}</span>
-                          <span>{a.icon}</span>
-                          <span>{a.name}</span>
-                        </button>
-                      ) : effectiveUrl ? (
-                        <a
-                          href={effectiveUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={() => recordAppClick(a.id)}
-                          className="hover:underline flex items-center gap-1.5"
-                        >
-                          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>#{idx + 1}</span>
-                          <span>{a.icon}</span>
-                          <span>{a.name}</span>
-                          <span style={{ color: 'var(--zelda-gold)' }}>↗</span>
-                        </a>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            navigator.clipboard?.writeText(a.localPath).catch(() => {});
-                            notify(`📋 Copied path: ${a.localPath}`);
-                          }}
-                          title={`Copy path: ${a.localPath}`}
-                          className="hover:underline text-left flex items-center gap-1.5"
-                        >
-                          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>#{idx + 1}</span>
-                          <span>{a.icon}</span>
-                          <span>{a.name}</span>
-                          <span>📋</span>
-                        </button>
-                      )}
-                    </td>
-
-                    <td className="py-2.5 px-3 whitespace-nowrap">
-                      <span
-                        className="px-2 py-0.5 rounded text-[10px] font-extrabold border"
-                        style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)', color: 'var(--text-sub)' }}
-                      >
-                        {a.suiteLabel}
-                      </span>
-                    </td>
-
-                    <td className="py-2.5 px-3 font-black tabular-nums text-sm" style={{ color: 'var(--zelda-gold)' }}>
-                      {t.dynamicScore}
-                    </td>
-
-                    <td className="py-2.5 px-3 whitespace-nowrap">
-                      <div className="font-bold">{a.visit}</div>
-                      {t.liveVisits > 0 || t.liveUpdates > 0 ? (
-                        <div className="text-[10px] font-extrabold" style={{ color: 'var(--zelda-cyan)' }}>
-                          実測アクセス {t.liveVisits}回
-                          {t.liveUpdates > 0 ? ` / 更新 ${t.liveUpdates}回` : ''}
-                          {t.dwellMin > 0 ? ` (${t.dwellMin}分)` : ''}
-                          {t.lastAccessStr ? ` · 最終 ${t.lastAccessStr}` : ''}
-                        </div>
-                      ) : (
-                        <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                          実測ログ: 未記録（クリックまたは訪問で自動計測）
-                        </div>
-                      )}
-                    </td>
-
-                    <td className="py-2.5 px-3 whitespace-nowrap">
-                      <div className="flex flex-col gap-0.5">
-                        <span
-                          className="inline-block w-fit px-2 py-0.5 rounded border text-[10px] font-black"
+                          onClick={() => toggleQuest(it.id)}
+                          title={`${it.label} (${it.targetApp})`}
+                          className={`w-full text-left text-[9px] font-extrabold px-1 py-0.5 rounded truncate leading-tight ${
+                            it.done ? 'line-through opacity-50' : ''
+                          }`}
                           style={{
-                            background: statusBadge.bg,
-                            borderColor: statusBadge.border,
-                            color: statusBadge.color,
+                            background: it.done
+                              ? 'rgba(0,0,0,0.2)'
+                              : it.day < TODAY
+                              ? 'rgba(239,68,68,0.32)'
+                              : it.day === TODAY
+                              ? 'rgba(217,168,78,0.32)'
+                              : 'rgba(255,255,255,0.06)',
                           }}
                         >
-                          {statusBadge.label}
-                        </span>
-                        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                          {a.wasteNote}
-                        </span>
-                      </div>
-                    </td>
-
-                    <td className="py-2.5 px-3 font-bold tabular-nums" style={{ color: 'var(--zelda-cyan)' }}>
-                      {a.design}
-                    </td>
-
-                    <td className="py-2.5 px-3 whitespace-nowrap tabular-nums">
-                      <div>{a.btnLabel}</div>
-                      <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{a.sizeLabel}</div>
-                    </td>
-
-                    <td className="py-2.5 px-3 whitespace-nowrap">
-                      <div className="flex items-center gap-1.5">
-                        {a.internalTab ? (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              recordAppClick(a.id);
-                              onNavigate(a.internalTab!);
-                            }}
-                            className="px-2.5 py-1 rounded border font-bold"
-                            style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
-                          >
-                            Open
-                          </button>
-                        ) : effectiveUrl ? (
-                          <a
-                            href={effectiveUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={() => recordAppClick(a.id)}
-                            className="px-2.5 py-1 rounded border font-bold"
-                            style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
-                          >
-                            Open ↗
-                          </a>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              navigator.clipboard?.writeText(a.localPath).catch(() => {});
-                              notify(`📋 Copied: ${a.localPath}`);
-                            }}
-                            className="px-2.5 py-1 rounded border font-bold"
-                            style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
-                          >
-                            Path
-                          </button>
-                        )}
-                        <button
-                          type="button"
-                          onClick={() => setEditingUrlId(a.id)}
-                          title="Edit App URL"
-                          className="px-2 py-1 rounded border"
-                          style={{ borderColor: 'var(--border)' }}
-                        >
-                          ✎
+                          {it.icon}{it.label}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const next = apps.map((x) => (x.id === a.id ? { ...x, muted: !x.muted } : x));
-                            setApps(next);
-                            localStorage.setItem(
-                              'agy_home_muted_v5',
-                              JSON.stringify(next.filter((x) => x.muted).map((x) => x.id))
-                            );
-                          }}
-                          title="休眠・無駄候補としてマーク / 解除"
-                          className="px-2 py-1 rounded border"
-                          style={{ borderColor: 'var(--border)' }}
-                        >
-                          {a.muted ? '↩' : '👁️'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const nextDel = [...deletedIds, a.id];
-                            setDeletedIds(nextDel);
-                            localStorage.setItem('agy_home_del_v5', JSON.stringify(nextDel));
-                            notify(`🔥 Removed ${a.name} from active launcher`);
-                          }}
-                          title="Delete from launcher"
-                          className="px-2 py-1 rounded border font-bold"
-                          style={{ borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}
-                        >
-                          🔥
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                      ))}
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
+            </div>
+          </div>
+        </div>
+
+        {/* RIGHT COLUMN (7 cols): コンパクト・低ノイズ全24ページランチャー */}
+        <div className="xl:col-span-7">
+          <div
+            className="p-3 rounded-lg border space-y-2.5 shadow-sm"
+            style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="text-sm font-black">🕹️ 全24ページ ランチャー＆無駄診断</h2>
+                <div className="flex items-center gap-1 text-[10px] font-extrabold">
+                  <span className="px-1.5 py-0.5 rounded border" style={{ background: 'rgba(111,176,135,0.16)', borderColor: 'var(--zelda-zonai)', color: 'var(--zelda-zonai)' }}>
+                    🟢稼働 {auditCounts.active}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded border" style={{ background: 'rgba(217,168,78,0.16)', borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}>
+                    🟡低頻度 {auditCounts.underused}
+                  </span>
+                  <span className="px-1.5 py-0.5 rounded border" style={{ background: 'rgba(239,68,68,0.18)', borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}>
+                    🔴無駄 {auditCounts.wasted} ({(savedMB / 1024).toFixed(1)}GB)
+                  </span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                {deletedIds.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeletedIds([]);
+                      localStorage.setItem('agy_home_del_v5', '[]');
+                    }}
+                    className="px-2 py-1 rounded text-[10px] font-bold border"
+                    style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
+                  >
+                    ↩ Restore
+                  </button>
+                )}
+                <input
+                  type="search"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="🔍 検索..."
+                  className="px-2 py-1 rounded border text-[11px] w-36"
+                  style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
+                />
+              </div>
+            </div>
+
+            {/* スイート絞り込みタブ */}
+            <div className="flex flex-wrap items-center gap-1">
+              {[
+                { id: 'all', label: `All (${enrichedApps.length})` },
+                { id: 'money', label: '💰 Money (6)' },
+                { id: 'lifelog', label: '🍎 Lifelog (5)' },
+                { id: 'life', label: '🏃 Life (2)' },
+                { id: 'other', label: '🎾 Other (11)' },
+                { id: 'waste', label: `🚨 無駄/低頻度 (${auditCounts.underused + auditCounts.wasted})` },
+              ].map((f) => {
+                const active = suiteFilter === f.id;
+                return (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setSuiteFilter(f.id as typeof suiteFilter)}
+                    className="px-2 py-0.5 rounded text-[11px] font-extrabold border transition"
+                    style={{
+                      background: active ? 'var(--accent)' : 'var(--bg-card2)',
+                      borderColor: active ? 'var(--zelda-gold)' : 'var(--border)',
+                      color: active ? '#1e1a16' : 'var(--text)',
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* 視線移動を最小化した4カラムコンパクトテーブル */}
+            <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+              <table className="w-full text-left text-[11.5px] border-collapse">
+                <thead style={{ background: '#212823', color: '#e4dac6' }}>
+                  <tr>
+                    <th className="py-2 px-2.5">順位 &amp; ページ (クリックで開く)</th>
+                    <th className="py-2 px-2">Score / 頻度</th>
+                    <th className="py-2 px-2">無駄診断</th>
+                    <th className="py-2 px-2 text-right">操作</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
+                  {visibleApps.map((a, idx) => {
+                    const effectiveUrl = customUrls[a.id] ?? a.url;
+                    const isEditing = editingUrlId === a.id;
+                    const t = a.telemetry;
+
+                    const statusBadge =
+                      t.wasteStatus === 'active'
+                        ? { label: '🟢 稼働', bg: 'rgba(111,176,135,0.16)', border: 'var(--zelda-zonai)', color: 'var(--zelda-zonai)' }
+                        : t.wasteStatus === 'underused'
+                        ? { label: '🟡 低頻度', bg: 'rgba(217,168,78,0.18)', border: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }
+                        : { label: '🔴 無駄', bg: 'rgba(239,68,68,0.20)', border: 'var(--f1-soft)', color: 'var(--f1-soft)' };
+
+                    return (
+                      <tr
+                        key={a.id}
+                        className={a.muted ? 'gray-done' : 'hover:bg-[var(--bg-card2)]'}
+                        style={{ background: 'var(--bg-card)' }}
+                      >
+                        <td className="py-1.5 px-2.5 font-black whitespace-nowrap">
+                          {isEditing ? (
+                            <input
+                              autoFocus
+                              defaultValue={effectiveUrl}
+                              placeholder="https://... or http://localhost:..."
+                              onBlur={(e) => {
+                                const val = e.target.value.trim();
+                                saveLinkUrl(a.id, val);
+                                setCustomUrls(loadLinkUrls());
+                                setEditingUrlId(null);
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') e.currentTarget.blur();
+                              }}
+                              className="px-2 py-0.5 rounded border text-xs w-48"
+                              style={{ background: 'var(--bg-card2)', borderColor: 'var(--zelda-gold)' }}
+                            />
+                          ) : a.internalTab ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                recordAppClick(a.id);
+                                onNavigate(a.internalTab!);
+                              }}
+                              className="hover:underline text-left font-black flex items-center gap-1.5"
+                            >
+                              <span className="text-[10px] w-5" style={{ color: 'var(--text-muted)' }}>#{idx + 1}</span>
+                              <span>{a.icon}</span>
+                              <span>{a.name}</span>
+                            </button>
+                          ) : effectiveUrl ? (
+                            <a
+                              href={effectiveUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => recordAppClick(a.id)}
+                              className="hover:underline flex items-center gap-1.5"
+                            >
+                              <span className="text-[10px] w-5" style={{ color: 'var(--text-muted)' }}>#{idx + 1}</span>
+                              <span>{a.icon}</span>
+                              <span>{a.name}</span>
+                              <span style={{ color: 'var(--zelda-gold)' }}>↗</span>
+                            </a>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(a.localPath).catch(() => {});
+                                notify(`📋 Copied path: ${a.localPath}`);
+                              }}
+                              title={`Copy path: ${a.localPath}`}
+                              className="hover:underline text-left flex items-center gap-1.5"
+                            >
+                              <span className="text-[10px] w-5" style={{ color: 'var(--text-muted)' }}>#{idx + 1}</span>
+                              <span>{a.icon}</span>
+                              <span>{a.name}</span>
+                              <span>📋</span>
+                            </button>
+                          )}
+                        </td>
+
+                        <td className="py-1.5 px-2 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <span className="font-black tabular-nums text-xs" style={{ color: 'var(--zelda-gold)' }}>
+                              {t.dynamicScore}
+                            </span>
+                            <span className="text-[10.5px]" style={{ color: 'var(--text-sub)' }}>
+                              {a.visit}
+                            </span>
+                            {(t.liveVisits > 0 || t.liveUpdates > 0) && (
+                              <span className="text-[10px] font-bold" style={{ color: 'var(--zelda-cyan)' }}>
+                                (実測{t.liveVisits}回)
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        <td className="py-1.5 px-2 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5" title={a.wasteNote}>
+                            <span
+                              className="px-1.5 py-0.5 rounded border text-[10px] font-black"
+                              style={{ background: statusBadge.bg, borderColor: statusBadge.border, color: statusBadge.color }}
+                            >
+                              {statusBadge.label}
+                            </span>
+                            <span className="text-[10px] truncate max-w-[140px]" style={{ color: 'var(--text-muted)' }}>
+                              {a.sizeLabel}
+                            </span>
+                          </div>
+                        </td>
+
+                        <td className="py-1.5 px-2 whitespace-nowrap text-right">
+                          <div className="inline-flex items-center gap-1">
+                            {a.internalTab ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  recordAppClick(a.id);
+                                  onNavigate(a.internalTab!);
+                                }}
+                                className="px-2 py-0.5 rounded border font-bold text-[10.5px]"
+                                style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
+                              >
+                                Open
+                              </button>
+                            ) : effectiveUrl ? (
+                              <a
+                                href={effectiveUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                onClick={() => recordAppClick(a.id)}
+                                className="px-2 py-0.5 rounded border font-bold text-[10.5px]"
+                                style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
+                              >
+                                Open↗
+                              </a>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard?.writeText(a.localPath).catch(() => {});
+                                  notify(`📋 Copied: ${a.localPath}`);
+                                }}
+                                className="px-2 py-0.5 rounded border font-bold text-[10.5px]"
+                                style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                              >
+                                Path
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => setEditingUrlId(a.id)}
+                              title="Edit App URL"
+                              className="px-1.5 py-0.5 rounded border text-[10.5px]"
+                              style={{ borderColor: 'var(--border)' }}
+                            >
+                              ✎
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const next = apps.map((x) => (x.id === a.id ? { ...x, muted: !x.muted } : x));
+                                setApps(next);
+                                localStorage.setItem(
+                                  'agy_home_muted_v5',
+                                  JSON.stringify(next.filter((x) => x.muted).map((x) => x.id))
+                                );
+                              }}
+                              title="休眠マーク / 解除"
+                              className="px-1.5 py-0.5 rounded border text-[10.5px]"
+                              style={{ borderColor: 'var(--border)' }}
+                            >
+                              {a.muted ? '↩' : '👁️'}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const nextDel = [...deletedIds, a.id];
+                                setDeletedIds(nextDel);
+                                localStorage.setItem('agy_home_del_v5', JSON.stringify(nextDel));
+                                notify(`🔥 Removed ${a.name}`);
+                              }}
+                              title="削除"
+                              className="px-1.5 py-0.5 rounded border font-bold text-[10.5px]"
+                              style={{ borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}
+                            >
+                              🔥
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       </div>
 
