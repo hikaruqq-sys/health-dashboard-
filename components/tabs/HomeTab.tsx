@@ -29,6 +29,7 @@ interface AppItem {
   mb: number;
   url: string;
   internalTab?: string;
+  lifelogView?: string;
   localPath: string;
   muted: boolean;
 }
@@ -49,7 +50,11 @@ const INITIAL_CAL_ITEMS: CalInputItem[] = [
 const INITIAL_APPS: AppItem[] = [
   { id: 'money', icon: '💰', name: 'Money & Assets', score: 90, visit: '週3-4回・12分', visitScore: 90, design: 90, btnLabel: '91 / 死3', btnCount: 94, sizeLabel: '837MB', mb: 837, url: 'https://money-dashboard-iota-three.vercel.app', localPath: '~/money-dashboard', muted: false },
   { id: 'health', icon: '🏠', name: 'Life Dashboard', score: 89, visit: '毎日・6分', visitScore: 91, design: 86, btnLabel: '92 / 死6', btnCount: 98, sizeLabel: '753MB', mb: 753, url: 'https://health-dashboard-dusky-xi.vercel.app', internalTab: 'health', localPath: '~/health-dashboard', muted: false },
-  { id: 'kaimono', icon: '🍎', name: 'Shopping & Items', score: 86, visit: '週3-5回・15分', visitScore: 92, design: 98, btnLabel: '81 / 死0', btnCount: 81, sizeLabel: '1.2MB', mb: 1.2, url: 'http://localhost:8765', localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog', muted: false },
+  { id: 'kaimono', icon: '🍎', name: '食料・日用品 (Lifelog)', score: 86, visit: '週3-5回', visitScore: 92, design: 98, btnLabel: '81 / 死0', btnCount: 81, sizeLabel: '1.2MB', mb: 1.2, url: 'http://127.0.0.1:8788/?view=overview', lifelogView: 'overview', localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog', muted: false },
+  { id: 'kaimono-assets', icon: '⚔️', name: '持ち物ポーチ (Lifelog)', score: 86, visit: '週2-4回', visitScore: 88, design: 96, btnLabel: '87点', btnCount: 87, sizeLabel: '1.2MB', mb: 1.2, url: 'http://127.0.0.1:8788/?view=assets', lifelogView: 'assets', localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog', muted: false },
+  { id: 'kaimono-books', icon: '📖', name: '読書図鑑 (Lifelog)', score: 85, visit: '週2-3回', visitScore: 84, design: 95, btnLabel: '30冊', btnCount: 30, sizeLabel: '1.2MB', mb: 1.2, url: 'http://127.0.0.1:8788/?view=books', lifelogView: 'books', localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog', muted: false },
+  { id: 'kaimono-mindset', icon: '🧭', name: '思考マップ (Lifelog)', score: 84, visit: '月2-4回', visitScore: 78, design: 94, btnLabel: 'レーダー', btnCount: 12, sizeLabel: '1.2MB', mb: 1.2, url: 'http://127.0.0.1:8788/?view=mindset-map', lifelogView: 'mindset-map', localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog', muted: false },
+  { id: 'kaimono-self', icon: '🪞', name: '自己分析・基本情報 (Lifelog)', score: 83, visit: '月1-2回', visitScore: 74, design: 92, btnLabel: '基本表', btnCount: 6, sizeLabel: '1.2MB', mb: 1.2, url: 'http://127.0.0.1:8788/?view=self-analysis', lifelogView: 'self-analysis', localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog', muted: false },
   { id: 'tvid', icon: '🎥', name: 'Tennis Video Maker', score: 86, visit: '週2-3回・25分', visitScore: 91, design: 85, btnLabel: '138 / 死2', btnCount: 140, sizeLabel: '58MB', mb: 58, url: 'http://localhost:8090', localPath: '~/tennis-score/tools', muted: false },
   { id: 'spanish', icon: '🇪🇸', name: 'Spanish Learning', score: 85, visit: '週4-5回・5分', visitScore: 82, design: 85, btnLabel: '24 / 死0', btnCount: 24, sizeLabel: '380KB', mb: 0.38, url: 'https://spanish-app-kappa-mauve.vercel.app', localPath: '~/spanish-learning-app', muted: false },
   { id: 'tennis', icon: '🎾', name: 'Tennis Score', score: 84, visit: '週2-3回・20分', visitScore: 89, design: 82, btnLabel: '146 / 死19', btnCount: 165, sizeLabel: '876MB', mb: 876, url: 'https://tennis-score-pi.vercel.app', localPath: '~/tennis-score', muted: false },
@@ -110,10 +115,33 @@ export default function HomeTab({
       if (savedTasks) setTasks(JSON.parse(savedTasks));
       const savedIdeas = localStorage.getItem('agy_home_ideas_v5');
       if (savedIdeas) setIdeas(JSON.parse(savedIdeas));
+      const savedAccess = localStorage.getItem('hd_app_access_logs_v1');
+      if (savedAccess) setAppAccessLogs(JSON.parse(savedAccess));
     } catch {
       // ignore
     }
+    fetch('http://127.0.0.1:8788/api/stats')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.ok && d.views) setLifelogStats(d.views);
+      })
+      .catch(() => {});
   }, []);
+
+  const [lifelogStats, setLifelogStats] = useState<Record<string, { visits: number; updates: number; last_visited_at?: string; last_updated_at?: string }>>({});
+  const [appAccessLogs, setAppAccessLogs] = useState<Record<string, { count: number; lastAt: string }>>({});
+
+  const recordAppClick = (appId: string) => {
+    const nowStr = new Date().toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    setAppAccessLogs((prev) => {
+      const cur = prev[appId] || { count: 0, lastAt: '' };
+      const next = { ...prev, [appId]: { count: cur.count + 1, lastAt: nowStr } };
+      try {
+        localStorage.setItem('hd_app_access_logs_v1', JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const notify = (msg: string) => {
     setToastMsg(msg);
@@ -508,7 +536,13 @@ export default function HomeTab({
                           <span>{a.name}</span>
                         </button>
                       ) : effectiveUrl ? (
-                        <a href={effectiveUrl} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-1.5">
+                        <a
+                          href={effectiveUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={() => recordAppClick(a.id)}
+                          className="hover:underline flex items-center gap-1.5"
+                        >
                           <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>#{idx + 1}</span>
                           <span>{a.icon}</span>
                           <span>{a.name}</span>
@@ -534,7 +568,19 @@ export default function HomeTab({
                     <td className="py-2.5 px-3 font-black tabular-nums" style={{ color: 'var(--zelda-gold)' }}>
                       {a.score}
                     </td>
-                    <td className="py-2.5 px-3 whitespace-nowrap">{a.visit}</td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <div>{a.visit}</div>
+                      {a.lifelogView && lifelogStats[a.lifelogView] ? (
+                        <div className="text-[10px]" style={{ color: 'var(--zelda-cyan)' }}>
+                          閲覧{lifelogStats[a.lifelogView].visits || 0} / 更新{lifelogStats[a.lifelogView].updates || 0}
+                          {lifelogStats[a.lifelogView].last_updated_at ? ` (${lifelogStats[a.lifelogView].last_updated_at!.slice(5, 16)})` : ''}
+                        </div>
+                      ) : appAccessLogs[a.id] ? (
+                        <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                          履歴 {appAccessLogs[a.id].count}回 ({appAccessLogs[a.id].lastAt})
+                        </div>
+                      ) : null}
+                    </td>
                     <td className="py-2.5 px-3 font-bold tabular-nums" style={{ color: 'var(--zelda-cyan)' }}>
                       {a.design}
                     </td>
@@ -556,6 +602,7 @@ export default function HomeTab({
                             href={effectiveUrl}
                             target="_blank"
                             rel="noopener noreferrer"
+                            onClick={() => recordAppClick(a.id)}
                             className="px-2.5 py-1 rounded border font-bold"
                             style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
                           >
