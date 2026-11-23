@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { loadLinkUrls, saveLinkUrl } from '@/data/links';
 import type { BodyMetric, DailyNutrition } from '@/types';
@@ -8,7 +8,6 @@ import type { BodyMetric, DailyNutrition } from '@/types';
 interface CalInputItem {
   id: string;
   day: number;
-  gpId: string;
   icon: string;
   label: string;
   targetApp: string;
@@ -34,47 +33,17 @@ interface AppItem {
   muted: boolean;
 }
 
-const TODAY = 23; // 2026-11-23 (月)
+const TODAY = 23; // 2026-11-23
 
 const INITIAL_CAL_ITEMS: CalInputItem[] = [
-  { id: 'c1', day: 14, gpId: 'gp-lv', icon: '🏢', label: 'Q2 IR', targetApp: 'Money & Assets', done: true, onTime: true },
-  { id: 'q1', day: 21, gpId: 'gp-lv', icon: '🏢', label: 'Q3 IR', targetApp: 'Money & Assets', done: false, onTime: null },
-  { id: 'q2', day: 22, gpId: 'gp-lv', icon: '📈', label: 'Econ 11', targetApp: 'Money & Assets', done: true, onTime: true },
-  { id: 'q3', day: 23, gpId: 'gp-qat', icon: '🍎', label: 'Shopping CSV', targetApp: 'Shopping & Items', done: false, onTime: null },
-  { id: 'q4', day: 25, gpId: 'gp-qat', icon: '🔥', label: 'Habits CSV', targetApp: 'Life Dashboard', done: false, onTime: null },
-  { id: 'q5', day: 28, gpId: 'gp-qat', icon: '💰', label: 'NISA Assets', targetApp: 'Money & Assets', done: false, onTime: null },
-  { id: 'q6', day: 29, gpId: 'gp-qat', icon: '💳', label: 'MF Budget', targetApp: 'Money & Assets', done: false, onTime: null },
-  { id: 'q7', day: 30, gpId: 'gp-abu', icon: '📚', label: 'Books CSV', targetApp: 'Life Dashboard', done: false, onTime: null },
-];
-
-const RACE_DAYS: Record<number, string> = {
-  15: '🇧🇷Brazil',
-  22: '🇺🇸Vegas',
-  29: '🇶🇦Qatar',
-};
-
-const GP_ROUNDS = [
-  {
-    id: 'gp-lv',
-    flag: '🇺🇸',
-    short: '11/22 Vegas',
-    rival: 'LEC',
-    path: 'M 75,25 L 32,25 L 25,52 L 55,58 L 95,38 L 145,38 L 155,65 L 185,68 L 228,45 L 232,92 L 42,92 L 42,72 L 75,25 Z',
-  },
-  {
-    id: 'gp-qat',
-    flag: '🇶🇦',
-    short: '11/29 Qatar',
-    rival: 'PIA',
-    path: 'M 35,88 L 215,88 L 228,58 L 185,45 L 198,20 L 145,25 L 125,52 L 95,22 L 55,28 L 72,58 L 35,62 L 35,88 Z',
-  },
-  {
-    id: 'gp-abu',
-    flag: '🇦🇪',
-    short: '12/06 AbuDhabi',
-    rival: 'VER',
-    path: 'M 85,25 L 45,25 L 22,18 L 32,88 L 175,88 L 228,72 L 218,38 L 175,42 L 172,62 L 135,58 L 125,32 L 85,25 Z',
-  },
+  { id: 'c1', day: 14, icon: '🏢', label: 'Q2 IR', targetApp: 'Money & Assets', done: true, onTime: true },
+  { id: 'q1', day: 21, icon: '🏢', label: 'Q3 IR', targetApp: 'Money & Assets', done: false, onTime: null },
+  { id: 'q2', day: 22, icon: '📈', label: 'Econ 11', targetApp: 'Money & Assets', done: true, onTime: true },
+  { id: 'q3', day: 23, icon: '🍎', label: 'Shopping CSV', targetApp: 'Shopping & Items', done: false, onTime: null },
+  { id: 'q4', day: 25, icon: '🔥', label: 'Habits CSV', targetApp: 'Life Dashboard', done: false, onTime: null },
+  { id: 'q5', day: 28, icon: '💰', label: 'NISA Assets', targetApp: 'Money & Assets', done: false, onTime: null },
+  { id: 'q6', day: 29, icon: '💳', label: 'MF Budget', targetApp: 'Money & Assets', done: false, onTime: null },
+  { id: 'q7', day: 30, icon: '📚', label: 'Books CSV', targetApp: 'Life Dashboard', done: false, onTime: null },
 ];
 
 const INITIAL_APPS: AppItem[] = [
@@ -107,7 +76,6 @@ export default function HomeTab({
   onNavigate: (tab: string) => void;
 }) {
   const [calItems, setCalItems] = useState<CalInputItem[]>(INITIAL_CAL_ITEMS);
-  const [selectedGpId, setSelectedGpId] = useState<string>('gp-qat');
   const [standMsg, setStandMsg] = useState<string>('期日内完了で順位UP!');
   const [apps, setApps] = useState<AppItem[]>(INITIAL_APPS);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
@@ -121,19 +89,6 @@ export default function HomeTab({
   const [customUrls, setCustomUrls] = useState<Record<string, string>>({});
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // SVG path geometry state (calculated safely on client)
-  const basePathRef = useRef<SVGPathElement | null>(null);
-  const [svgCoords, setSvgCoords] = useState({
-    len: 500,
-    sx: 75,
-    sy: 25,
-    px: 75,
-    py: 25,
-    rx: 180,
-    ry: 68,
-  });
-
-  // Load persisted state from localStorage
   useEffect(() => {
     try {
       setCustomUrls(loadLinkUrls());
@@ -156,7 +111,7 @@ export default function HomeTab({
       const savedIdeas = localStorage.getItem('agy_home_ideas_v5');
       if (savedIdeas) setIdeas(JSON.parse(savedIdeas));
     } catch {
-      // ignore storage errors
+      // ignore
     }
   }, []);
 
@@ -165,29 +120,15 @@ export default function HomeTab({
     setTimeout(() => setToastMsg((cur) => (cur === msg ? null : cur)), 3200);
   };
 
-  const getGpProgress = (gpId: string) => {
-    const qs = calItems.filter((c) => c.gpId === gpId);
-    return qs.length ? qs.filter((c) => c.done).length / qs.length : 1;
-  };
-
-  const isGpCleared = (gpId: string) => getGpProgress(gpId) >= 1;
-
-  const isGpUnlocked = (idx: number) => {
-    if (idx === 0) return true;
-    for (let i = 0; i < idx; i++) {
-      if (!isGpCleared(GP_ROUNDS[i].id)) return false;
-    }
-    return true;
-  };
-
-  // Calculate Championship Rank, Points & Missing/Overdue Items
-  const { pts, overdueItems, dueTodayItems, rank, drivers } = useMemo(() => {
+  const { pts, overdueItems, dueTodayItems, rank, drivers, doneCount } = useMemo(() => {
     let score = 320;
     const overdueList: CalInputItem[] = [];
     const todayList: CalInputItem[] = [];
+    let dCount = 0;
 
     calItems.forEach((c) => {
       if (c.done) {
+        dCount++;
         score += c.onTime ? 25 : 8;
       } else if (c.day < TODAY) {
         overdueList.push(c);
@@ -213,36 +154,9 @@ export default function HomeTab({
       dueTodayItems: todayList,
       rank: list.findIndex((d) => d.you) + 1,
       drivers: list,
+      doneCount: dCount,
     };
   }, [calItems, deletedIds]);
-
-  const selGp = GP_ROUNDS.find((g) => g.id === selectedGpId) ?? GP_ROUNDS[1];
-  const selUnlocked = isGpUnlocked(GP_ROUNDS.indexOf(selGp));
-  const selProg = selUnlocked ? getGpProgress(selGp.id) : 0;
-  const selPct = Math.round(selProg * 100);
-
-  // Recalculate SVG GPS coordinates when selected GP or progress changes
-  useEffect(() => {
-    const pathEl = basePathRef.current;
-    if (!pathEl) return;
-    try {
-      const len = pathEl.getTotalLength() || 500;
-      const sPt = pathEl.getPointAtLength(0);
-      const pPt = pathEl.getPointAtLength(selProg >= 1 ? len * 0.99 : Math.max(8, len * selProg));
-      const rPt = pathEl.getPointAtLength(len * 0.68);
-      setSvgCoords({
-        len,
-        sx: sPt.x,
-        sy: sPt.y,
-        px: pPt.x,
-        py: pPt.y,
-        rx: rPt.x,
-        ry: rPt.y,
-      });
-    } catch {
-      // ignore SVG errors
-    }
-  }, [selGp.id, selProg]);
 
   const toggleQuest = (id: string) => {
     setCalItems((prev) => {
@@ -251,7 +165,6 @@ export default function HomeTab({
         const nextDone = !c.done;
         const onTime = nextDone ? c.day >= TODAY : null;
         setStandMsg(nextDone ? (onTime ? '🟢 +25pt 順位UP!' : '⚠️ 遅延回収 +8pt') : '↩ 未実施');
-        setSelectedGpId(c.gpId);
         return { ...c, done: nextDone, onTime };
       });
       const map: Record<string, { done: boolean; onTime?: boolean | null }> = {};
@@ -285,9 +198,6 @@ export default function HomeTab({
     notify(`🟣 ${filename} をSupabase経由で別アプリへ反映しました！`);
   };
 
-  const nextRace = GP_ROUNDS.find((g, idx) => !isGpCleared(g.id) && isGpUnlocked(idx)) ?? GP_ROUNDS[1];
-  const remForNextRace = calItems.filter((c) => c.gpId === nextRace.id && !c.done).length;
-
   const visibleApps = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
     return apps
@@ -301,6 +211,7 @@ export default function HomeTab({
     .reduce((s, a) => s + a.mb, 0);
 
   const missingAlerts = [...overdueItems, ...dueTodayItems];
+  const progressPct = Math.round((doneCount / calItems.length) * 100);
 
   return (
     <div className="space-y-2.5 text-xs" style={{ color: 'var(--text)' }}>
@@ -332,9 +243,9 @@ export default function HomeTab({
             </span>
             <span
               className="px-2 py-0.5 rounded font-black text-[11px] border"
-              style={{ borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}
+              style={{ borderColor: 'var(--zelda-zonai)', color: 'var(--zelda-zonai)' }}
             >
-              🏁 {nextRace.short}まで残{remForNextRace}件
+              進捗 {doneCount}/{calItems.length} ({progressPct}%)
             </span>
             {metrics.length > 0 && metrics[metrics.length - 1].weight != null && (
               <span className="px-1.5 py-0.5 rounded text-[10px] font-bold border" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
@@ -433,18 +344,18 @@ export default function HomeTab({
         </div>
       </div>
 
-      {/* ROW 2: CALENDAR CENTER (8 cols) + CLEAN SVG CIRCUIT MAP & STANDINGS (4 cols) */}
+      {/* ROW 2: CALENDAR CENTER (9 cols) + CLEAN STANDINGS (3 cols) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
         {/* LEFT: November Calendar */}
-        <div className="lg:col-span-8 p-2.5 rounded-lg border space-y-1.5" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
+        <div className="lg:col-span-9 p-2.5 rounded-lg border space-y-1.5" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
           <div className="flex items-center justify-between text-[11px] font-black">
-            <span>📅 2026年11月 インプット＆F1レースカレンダー</span>
+            <span>📅 2026年11月 インプットカレンダー</span>
             <span className="text-[10px] font-bold" style={{ color: 'var(--text-muted)' }}>
               🚨遅れ(減点) ｜ 🟢期日内(+25pt) ｜ ⚪完了グレー
             </span>
           </div>
           <div className="grid grid-cols-7 gap-1 text-center text-[9.5px] font-bold" style={{ color: 'var(--text-muted)' }}>
-            <span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span><span>日(🏁決勝)</span>
+            <span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span><span>日</span>
           </div>
           <div className="grid grid-cols-7 gap-1">
             {Array.from({ length: 6 }).map((_, idx) => (
@@ -453,7 +364,6 @@ export default function HomeTab({
             {Array.from({ length: 30 }).map((_, idx) => {
               const d = idx + 1;
               const items = calItems.filter((c) => c.day === d);
-              const raceTag = RACE_DAYS[d];
               const hasOverdue = items.some((c) => !c.done && d < TODAY);
               const allDone = items.length > 0 && items.every((c) => c.done);
               return (
@@ -467,8 +377,6 @@ export default function HomeTab({
                         ? 'var(--zelda-gold)'
                         : hasOverdue
                         ? 'var(--f1-soft)'
-                        : raceTag
-                        ? 'var(--f1-purple)'
                         : 'var(--border)',
                   }}
                 >
@@ -477,7 +385,7 @@ export default function HomeTab({
                       {d}
                       {d === TODAY ? '今日' : ''}
                     </span>
-                    <span>{raceTag ?? ''}</span>
+                    <span>{allDone ? '✓' : hasOverdue ? '🚨' : ''}</span>
                   </div>
                   <div className="space-y-0.5">
                     {items.map((it) => (
@@ -507,99 +415,21 @@ export default function HomeTab({
           </div>
         </div>
 
-        {/* RIGHT: Clean SVG Circuit Map + Standings */}
+        {/* RIGHT: Clean Standings & Simple Progress */}
         <div
-          className="lg:col-span-4 p-2.5 rounded-lg border flex flex-col justify-between gap-2"
+          className="lg:col-span-3 p-2.5 rounded-lg border flex flex-col justify-between gap-2"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
-          <div className="grid grid-cols-3 gap-1">
-            {GP_ROUNDS.map((g, idx) => {
-              const pct = Math.round(getGpProgress(g.id) * 100);
-              const unlocked = isGpUnlocked(idx);
-              const isSel = selectedGpId === g.id;
-              return (
-                <button
-                  key={g.id}
-                  type="button"
-                  onClick={() => setSelectedGpId(g.id)}
-                  className={`p-1 rounded border text-center ${pct === 100 ? 'gray-done' : !unlocked ? 'opacity-40' : ''}`}
-                  style={{ background: 'var(--bg)', borderColor: isSel ? 'var(--zelda-gold)' : 'var(--border)' }}
-                >
-                  <div className="text-[9.5px] font-black truncate">
-                    {g.flag}
-                    {g.short.split(' ')[1]}
-                  </div>
-                  <div className="text-[9px] font-bold" style={{ color: pct === 100 ? 'var(--zelda-zonai)' : unlocked ? 'var(--zelda-gold)' : 'var(--text-muted)' }}>
-                    {pct === 100 ? '🏁完' : unlocked ? `${pct}%` : '🔒'}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          <div className="rounded-lg border p-2 flex flex-col items-center gap-1" style={{ background: '#181512', borderColor: 'var(--border)' }}>
-            <div className="w-full flex items-center justify-between text-[10.5px] font-black">
-              <span style={{ color: 'var(--zelda-gold)' }}>
-                {selGp.flag} {selGp.short}
-              </span>
-              <span style={{ color: 'var(--f1-purple)' }}>{selUnlocked ? `${selPct}%` : '🔒LOCK'}</span>
-            </div>
-            <svg viewBox="0 0 260 110" className="w-full h-24 overflow-visible">
-              <path
-                ref={basePathRef}
-                d={selGp.path}
-                fill="none"
-                stroke="#3f3831"
-                strokeWidth="7.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-              <path
-                d={selGp.path}
-                fill="none"
-                stroke="#8b959e"
-                strokeWidth="5.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                style={{
-                  strokeDasharray: svgCoords.len,
-                  strokeDashoffset: svgCoords.len * (1 - selProg),
-                }}
-              />
-              <circle cx={svgCoords.sx} cy={svgCoords.sy} r="4" fill="#fff" stroke="#000" strokeWidth="1.5" />
-              <circle cx={svgCoords.rx} cy={svgCoords.ry} r="4.5" fill="#38bdf8" stroke="#000" strokeWidth="1.2" />
-              <text x={svgCoords.rx + 6} y={svgCoords.ry + 3} fill="#38bdf8" fontSize="8" fontWeight="900">
-                {selGp.rival}
-              </text>
-              <circle className="car-dot-you" cx={svgCoords.px} cy={svgCoords.py} r="6" fill="#8b959e" stroke="#fff" strokeWidth="1.8" />
-              <text
-                x={Math.min(210, Math.max(5, svgCoords.px - 15))}
-                y={Math.max(12, svgCoords.py - 9)}
-                fill="#fff"
-                fontSize="8.5"
-                fontWeight="900"
-              >
-                🚙YOU
-              </text>
-            </svg>
-            <div className="w-full h-1.5 bg-black/60 rounded-full overflow-hidden">
-              <div
-                className="h-full transition-all duration-300"
-                style={{ width: `${selPct}%`, background: 'linear-gradient(90deg, #8b959e, var(--f1-purple))' }}
-              />
-            </div>
-          </div>
-
-          <div className="space-y-1">
-            <div className="flex justify-between text-[10px] font-black">
+          <div className="space-y-2">
+            <div className="flex justify-between items-center text-[11px] font-black">
               <span style={{ color: 'var(--zelda-gold)' }}>🏆 順位表</span>
-              <span style={{ color: 'var(--zelda-zonai)' }}>{standMsg}</span>
+              <span className="text-[10px]" style={{ color: 'var(--zelda-zonai)' }}>{standMsg}</span>
             </div>
-            <div className="grid grid-cols-2 gap-1 text-[9.5px] font-extrabold">
+            <div className="space-y-1 text-[10px] font-extrabold">
               {drivers.map((d, i) => (
                 <div
                   key={d.name}
-                  className="px-1.5 py-0.5 rounded border flex justify-between"
+                  className="px-2 py-1.5 rounded border flex justify-between items-center"
                   style={{
                     background: d.you ? 'rgba(139,149,158,0.28)' : 'var(--bg-card2)',
                     borderColor: d.you ? '#cbd5e1' : 'var(--border)',
@@ -608,9 +438,19 @@ export default function HomeTab({
                   <span>
                     P{i + 1} {d.name}
                   </span>
-                  <span>{d.pts}</span>
+                  <span>{d.pts} pt</span>
                 </div>
               ))}
+            </div>
+          </div>
+
+          <div className="p-2 rounded border space-y-1" style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}>
+            <div className="flex justify-between text-[10px] font-bold">
+              <span>今月の完了率</span>
+              <span style={{ color: 'var(--zelda-gold)' }}>{progressPct}%</span>
+            </div>
+            <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden">
+              <div className="h-full transition-all" style={{ width: `${progressPct}%`, background: 'var(--zelda-zonai)' }} />
             </div>
           </div>
         </div>
@@ -799,7 +639,7 @@ export default function HomeTab({
         </div>
       </div>
 
-      {/* ROW 4: NEXT TASKS & NEW APP IDEAS (1-ROW PILLS) */}
+      {/* ROW 4: NEXT TASKS & NEW APP IDEAS */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-[10px]">
         <div
           className="p-2 rounded-lg border flex items-center justify-between gap-1.5"
