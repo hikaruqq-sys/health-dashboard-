@@ -526,67 +526,125 @@ const INITIAL_APPS: AppItem[] = [
   },
 ];
 
-interface NoteItem {
+interface FixTaskItem {
+  id: string;
+  appId: string;
+  appName: string;
+  localPath: string;
+  title: string;
+  detail: string;
+  subIdeas: string[];
+}
+
+interface NewAppIdeaItem {
+  id: string;
   title: string;
   target: string;
   detail: string;
+  subIdeas: string[];
 }
 
-const INITIAL_TASKS: NoteItem[] = [
+const INITIAL_TASKS: FixTaskItem[] = [
   {
-    title: '🎥 Delete Raw MP4s',
-    target: 'Tennis Video / Mac',
+    id: 'fix-tvid-mp4',
+    appId: 'tvid',
+    appName: 'Tennis Video',
+    localPath: '~/tennis-score/tools',
+    title: 'Delete Raw MP4s',
     detail: '動画編集後の元MP4ファイルや書き出しキャッシュを削除して数GBの空き容量を確保する。',
+    subIdeas: ['書き出し完了後に元動画を自動アーカイブするボタンを追加'],
   },
   {
-    title: '🏠 Fix Dead Links',
-    target: 'Tennis Score / Companies',
-    detail: 'Tennis Score(19個)・Video Editor(2個)・Companies(1個)の死ボタン・リンク切れを修正する。',
+    id: 'fix-tennis-links',
+    appId: 'tennis',
+    appName: 'Tennis Score',
+    localPath: '~/tennis-score',
+    title: 'Fix Dead Links (19件)',
+    detail: '死ボタン19個と未実装リンクを整理・修正し、全ボタンが正常に動作する状態にする。',
+    subIdeas: ['未プッシュの24コミットも合わせてGitHubへPush'],
   },
   {
-    title: '🍎 Git Init Lifelog',
-    target: 'Lifelog (kaimono-lifelog)',
-    detail: 'ローカルサーバー運用中のLifelogをGit管理し、変更履歴とバックアップを安全に保つ。',
+    id: 'fix-kaimono-git',
+    appId: 'kaimono',
+    appName: 'Lifelog: Pantry',
+    localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog',
+    title: 'Git Init & Cloud Sync',
+    detail: 'ローカルサーバー運用中のLifelogをGit管理化し、Supabaseへの自動バックアップを追加する。',
+    subIdeas: ['買い物CSV取込後の在庫アラート表示を強化'],
   },
   {
-    title: '🎾 Push 24 Commits',
-    target: 'Tennis Score',
-    detail: 'ローカルに溜まっている未プッシュのコミットをGitHubへPushし本番環境を最新化する。',
+    id: 'fix-money-companies',
+    appId: 'money-companies',
+    appName: 'Money: Stocks',
+    localPath: '~/money-dashboard/app/companies',
+    title: 'Q3 IRデータ更新＆死ボタン修正',
+    detail: '未更新のQ3決算データを最新化し、銘柄詳細のリンク切れ1件を修正する。',
+    subIdeas: [],
   },
   {
-    title: '🧹 Clean 3.3GB Dormant',
-    target: 'Podcast Align / Video Gen 等',
-    detail: 'アクセス0で休眠中の4アプリ(合計3.3GB)を整理・削除して開発環境をスッキリさせる。',
+    id: 'fix-dormant-cleanup',
+    appId: 'palign',
+    appName: 'Podcast Align / Dormant 4種',
+    localPath: '~/podcast-align',
+    title: 'Clean 3.3GB Dormant Apps',
+    detail: 'アクセス0で休眠中の4アプリ(Podcast Align / Video Gen / Claude Island / Image Split)を削除・整理する。',
+    subIdeas: [],
   },
 ];
 
-const INITIAL_IDEAS: NoteItem[] = [
+const INITIAL_IDEAS: NewAppIdeaItem[] = [
   {
+    id: 'idea-privacy',
     title: '🔐 Privacy & SSO Map',
     target: '全アプリ共通',
     detail: '各アプリのSupabase認証・APIキー・外部連携権限を一画面で把握・点検できる管理マップ。',
+    subIdeas: ['期限切れトークンの自動アラート機能'],
   },
   {
+    id: 'idea-storage',
     title: '💾 Mac Storage Miner',
     target: 'Macローカル',
     detail: '肥大化したnode_modulesや動画キャッシュを自動検出し、ワンクリックで掃除する容量最適化ツール。',
+    subIdeas: ['プロジェクト別の容量ランキング表示'],
   },
   {
+    id: 'idea-davinci',
     title: '🎬 DaVinci Slimmer',
-    target: 'Tennis Video',
+    target: 'Tennis Video連携',
     detail: 'DaVinci Resolveのプロジェクトとプロキシファイルを自動整理し、編集後の容量膨張を防ぐツール。',
+    subIdeas: [],
   },
   {
+    id: 'idea-podcast-crm',
     title: '🎙️ Podcast CRM',
     target: 'Lifelog: Books連携',
     detail: '聴いたポッドキャストを自動文字起こし・要約し、読書図鑑と同じ形式で知識をストックするアプリ。',
+    subIdeas: ['ハイライト箇所のタイムスタンプ保存'],
   },
   {
+    id: 'idea-room-3d',
     title: '🧊 3D Room Builder',
     target: 'Lifelog: Gear連携',
     detail: '持ち物ポーチ(87アイテム)の配置を部屋レイアウト上で可視化し、断捨離や模様替えに活かすアプリ。',
+    subIdeas: [],
   },
 ];
+
+function buildFixPrompt(t: FixTaskItem): string {
+  const extra =
+    t.subIdeas.length > 0
+      ? `\n【追加の修正アイデア】\n${t.subIdeas.map((s) => `- ${s}`).join('\n')}`
+      : '';
+  return `${t.localPath} (${t.appName}) を以下の通り修正してください。\n【修正内容】${t.title}\n【詳細】${t.detail}${extra}`;
+}
+
+function buildIdeaPrompt(idea: NewAppIdeaItem): string {
+  const extra =
+    idea.subIdeas.length > 0
+      ? `\n【追加アイデア・機能】\n${idea.subIdeas.map((s) => `- ${s}`).join('\n')}`
+      : '';
+  return `新規アプリ「${idea.title}」をウォームダーク＆羊皮紙テーマで作成してください。\n【連携・領域】${idea.target}\n【概要】${idea.detail}${extra}`;
+}
 
 export default function HomeTab({
   metrics,
@@ -600,12 +658,16 @@ export default function HomeTab({
   const [calItems, setCalItems] = useState<CalInputItem[]>(INITIAL_CAL_ITEMS);
   const [apps, setApps] = useState<AppItem[]>(INITIAL_APPS);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
-  const [tasks, setTasks] = useState<NoteItem[]>(INITIAL_TASKS);
-  const [ideas, setIdeas] = useState<NoteItem[]>(INITIAL_IDEAS);
+  const [tasks, setTasks] = useState<FixTaskItem[]>(INITIAL_TASKS);
+  const [ideas, setIdeas] = useState<NewAppIdeaItem[]>(INITIAL_IDEAS);
+  const [fixAppId, setFixAppId] = useState<string>(INITIAL_APPS[0].id);
   const [taskIn, setTaskIn] = useState('');
   const [taskDetailIn, setTaskDetailIn] = useState('');
   const [ideaIn, setIdeaIn] = useState('');
   const [ideaDetailIn, setIdeaDetailIn] = useState('');
+  const [pinnedFixId, setPinnedFixId] = useState<string | null>(null);
+  const [pinnedIdeaId, setPinnedIdeaId] = useState<string | null>(null);
+  const [subIdeaDrafts, setSubIdeaDrafts] = useState<Record<string, string>>({});
   const [searchQuery, setSearchQuery] = useState('');
   const [suiteFilter, setSuiteFilter] = useState<'all' | AppSuite | 'waste'>('all');
   const [editingUrlId, setEditingUrlId] = useState<string | null>(null);
@@ -639,9 +701,9 @@ export default function HomeTab({
         const mSet = new Set(JSON.parse(savedMuted) as string[]);
         setApps((prev) => prev.map((a) => ({ ...a, muted: mSet.has(a.id) })));
       }
-      const savedTasks = localStorage.getItem('agy_home_tasks_v6');
+      const savedTasks = localStorage.getItem('agy_home_tasks_v7');
       if (savedTasks) setTasks(JSON.parse(savedTasks));
-      const savedIdeas = localStorage.getItem('agy_home_ideas_v6');
+      const savedIdeas = localStorage.getItem('agy_home_ideas_v7');
       if (savedIdeas) setIdeas(JSON.parse(savedIdeas));
       const savedAccess = localStorage.getItem('hd_app_access_logs_v1');
       if (savedAccess) setAppAccessLogs(JSON.parse(savedAccess));
@@ -1434,139 +1496,287 @@ export default function HomeTab({
         </div>
       </div>
 
-      {/* ROW 4: 今後やるべき修正点 ＆ 作るべきアプリの案（下部に配置・ホバーで概要ポップアップ表示） */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+      {/* ROW 4: 既存アプリの修正点 ＆ 未作成の新規アプリ案（ホバー/クリックで詳細・Antigravityプロンプト・追加アイデア入力） */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 text-xs">
+        {/* 左：既存アプリの修正指示 */}
         <div
-          className="p-3.5 rounded-lg border space-y-2.5 shadow-sm"
+          className="p-4 rounded-lg border space-y-3 shadow-sm"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-2">
             <div>
-              <h3 className="text-sm font-black">🛠️ 今後やるべき修正点</h3>
+              <h3 className="text-sm font-black">🛠️ 既存アプリの修正（Antigravity指示キュー）</h3>
               <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                （項目にカーソルを合わせると修正内容の詳細が表示されます）
+                （既存アプリを選んで修正を追加・カーソルまたはクリックでAntigravityプロンプト＆追加アイデア入力）
               </span>
             </div>
+
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!taskIn.trim()) return;
-                const next: NoteItem[] = [
+                const targetApp = apps.find((a) => a.id === fixAppId) || apps[0];
+                const next: FixTaskItem[] = [
                   {
+                    id: `fix_${Date.now()}`,
+                    appId: targetApp.id,
+                    appName: targetApp.name,
+                    localPath: targetApp.localPath,
                     title: taskIn.trim(),
-                    target: 'カスタム',
-                    detail: taskDetailIn.trim() || '修正内容メモ未設定',
+                    detail: taskDetailIn.trim() || `${targetApp.name} の改善・修正`,
+                    subIdeas: [],
                   },
                   ...tasks,
                 ];
                 setTasks(next);
                 setTaskIn('');
                 setTaskDetailIn('');
-                localStorage.setItem('agy_home_tasks_v6', JSON.stringify(next));
+                localStorage.setItem('agy_home_tasks_v7', JSON.stringify(next));
               }}
-              className="flex flex-wrap gap-1 flex-shrink-0"
+              className="flex flex-wrap gap-1.5"
             >
+              <select
+                value={fixAppId}
+                onChange={(e) => setFixAppId(e.target.value)}
+                className="px-2 py-1 rounded border text-xs font-bold"
+                style={{ background: 'var(--bg-card2)', borderColor: 'var(--zelda-gold)', color: 'var(--text)' }}
+              >
+                {apps.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.icon} {a.name}
+                  </option>
+                ))}
+              </select>
               <input
                 type="text"
                 value={taskIn}
                 onChange={(e) => setTaskIn(e.target.value)}
                 placeholder="＋修正タイトル"
-                className="w-28 px-2 py-1 rounded border text-xs"
+                className="w-32 px-2 py-1 rounded border text-xs"
                 style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
               />
               <input
                 type="text"
                 value={taskDetailIn}
                 onChange={(e) => setTaskDetailIn(e.target.value)}
-                placeholder="詳細メモ(任意)"
-                className="w-32 px-2 py-1 rounded border text-xs"
+                placeholder="修正の詳細(任意)"
+                className="flex-1 min-w-[120px] px-2 py-1 rounded border text-xs"
                 style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
               />
               <button
                 type="submit"
-                className="px-2.5 py-1 rounded font-black border text-xs"
+                className="px-3 py-1 rounded font-black border text-xs"
                 style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
               >
                 追加
               </button>
             </form>
           </div>
+
           <div className="flex flex-wrap items-center gap-2 font-bold">
-            {tasks.map((t, i) => (
-              <div key={`${t.title}-${i}`} className="relative group">
-                <span
-                  className="px-2.5 py-1 rounded-md border flex items-center gap-1.5 text-xs cursor-help transition hover:border-[var(--zelda-gold)]"
-                  style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
-                >
-                  <span>🛠️ {t.title}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = tasks.filter((_, idx) => idx !== i);
-                      setTasks(next);
-                      localStorage.setItem('agy_home_tasks_v6', JSON.stringify(next));
+            {tasks.map((t) => {
+              const isPinned = pinnedFixId === t.id;
+              const promptStr = buildFixPrompt(t);
+              return (
+                <div key={t.id} className="relative group">
+                  <div
+                    className="px-2.5 py-1 rounded-md border flex items-center gap-1.5 text-xs cursor-pointer transition"
+                    style={{
+                      background: isPinned ? 'rgba(217, 168, 78, 0.22)' : 'var(--bg-card2)',
+                      borderColor: isPinned ? 'var(--zelda-gold)' : 'var(--border)',
                     }}
-                    className="opacity-60 hover:opacity-100"
                   >
-                    ✕
-                  </button>
-                </span>
-                {/* Hover Detail Tooltip */}
-                <div
-                  className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 absolute bottom-full left-0 mb-2 z-50 w-64 p-2.5 rounded-lg border-2 shadow-2xl"
-                  style={{ background: 'var(--bg-card)', borderColor: 'var(--zelda-gold)', color: 'var(--text)' }}
-                >
-                  <div className="text-[11px] font-black mb-0.5" style={{ color: 'var(--zelda-gold)' }}>
-                    {t.title}
+                    <button
+                      type="button"
+                      onClick={() => setPinnedFixId(isPinned ? null : t.id)}
+                      className="text-left flex items-center gap-1"
+                    >
+                      <span>🛠️ {t.appName}: {t.title}</span>
+                      {t.subIdeas.length > 0 && (
+                        <span className="text-[10px] px-1 rounded" style={{ background: 'rgba(217,168,78,0.2)', color: 'var(--zelda-gold)' }}>
+                          +{t.subIdeas.length}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = tasks.filter((x) => x.id !== t.id);
+                        setTasks(next);
+                        if (isPinned) setPinnedFixId(null);
+                        localStorage.setItem('agy_home_tasks_v7', JSON.stringify(next));
+                      }}
+                      className="opacity-60 hover:opacity-100"
+                    >
+                      ✕
+                    </button>
                   </div>
-                  <div className="text-[10px] font-bold mb-1" style={{ color: 'var(--zelda-cyan)' }}>
-                    対象: {t.target}
-                  </div>
-                  <div className="text-[11px] font-normal leading-relaxed" style={{ color: 'var(--text-sub)' }}>
-                    {t.detail}
+
+                  {/* Interactive Hover / Pinned Popover with Antigravity Prompt & Sub-Ideas */}
+                  <div
+                    className={`${
+                      isPinned ? 'block' : 'hidden group-hover:block'
+                    } absolute bottom-full left-0 pb-2 z-50 w-80 sm:w-96`}
+                  >
+                    <div
+                      className="p-3 rounded-lg border-2 shadow-2xl space-y-2"
+                      style={{ background: 'var(--bg-card)', borderColor: 'var(--zelda-gold)', color: 'var(--text)' }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-black" style={{ color: 'var(--zelda-gold)' }}>
+                            🛠️ {t.appName} — {t.title}
+                          </div>
+                          <div className="text-[10px] font-mono" style={{ color: 'var(--zelda-cyan)' }}>
+                            {t.localPath}
+                          </div>
+                        </div>
+                        {isPinned && (
+                          <button
+                            type="button"
+                            onClick={() => setPinnedFixId(null)}
+                            className="text-[10px] px-1.5 py-0.5 rounded border"
+                            style={{ borderColor: 'var(--border)' }}
+                          >
+                            閉じる
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="text-[11px] font-normal leading-relaxed" style={{ color: 'var(--text-sub)' }}>
+                        {t.detail}
+                      </div>
+
+                      {t.subIdeas.length > 0 && (
+                        <div className="space-y-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+                          <div className="text-[10px] font-black" style={{ color: 'var(--zelda-gold)' }}>
+                            追加された修正アイデア:
+                          </div>
+                          {t.subIdeas.map((si, idx) => (
+                            <div key={idx} className="text-[11px] font-normal flex items-center justify-between gap-1">
+                              <span>• {si}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = tasks.map((x) =>
+                                    x.id === t.id
+                                      ? { ...x, subIdeas: x.subIdeas.filter((_, sIdx) => sIdx !== idx) }
+                                      : x
+                                  );
+                                  setTasks(next);
+                                  localStorage.setItem('agy_home_tasks_v7', JSON.stringify(next));
+                                }}
+                                className="opacity-50 hover:opacity-100 text-[10px]"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* 追加の修正アイデアを同じ項目に足すフォーム */}
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const val = (subIdeaDrafts[t.id] || '').trim();
+                          if (!val) return;
+                          const next = tasks.map((x) =>
+                            x.id === t.id ? { ...x, subIdeas: [...x.subIdeas, val] } : x
+                          );
+                          setTasks(next);
+                          setSubIdeaDrafts((prev) => ({ ...prev, [t.id]: '' }));
+                          localStorage.setItem('agy_home_tasks_v7', JSON.stringify(next));
+                        }}
+                        className="flex gap-1 pt-1"
+                      >
+                        <input
+                          type="text"
+                          value={subIdeaDrafts[t.id] || ''}
+                          onChange={(e) => setSubIdeaDrafts((prev) => ({ ...prev, [t.id]: e.target.value }))}
+                          placeholder="＋この修正に追加アイデアを追記..."
+                          className="flex-1 px-2 py-1 rounded border text-[11px] font-normal"
+                          style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
+                        />
+                        <button
+                          type="submit"
+                          className="px-2 py-1 rounded border text-[10px] font-black"
+                          style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
+                        >
+                          追記
+                        </button>
+                      </form>
+
+                      {/* Antigravity指示プロンプト表示＆コピー */}
+                      <div className="p-2 rounded border space-y-1.5" style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black" style={{ color: 'var(--zelda-cyan)' }}>
+                            🤖 Antigravity 指示プロンプト:
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(promptStr).catch(() => {});
+                              notify(`📋 Antigravity用プロンプトをコピーしました (${t.appName})`);
+                            }}
+                            className="px-2 py-0.5 rounded font-black text-[10px]"
+                            style={{ background: 'var(--accent)', color: '#1e1a16' }}
+                          >
+                            📋 コピー
+                          </button>
+                        </div>
+                        <pre className="text-[10px] font-normal whitespace-pre-wrap leading-snug" style={{ color: 'var(--text-muted)' }}>
+                          {promptStr}
+                        </pre>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
 
+        {/* 右：まだ存在していない新規アプリ案（同じアプリ案に何度でも追加アイデアを足せる） */}
         <div
-          className="p-3.5 rounded-lg border space-y-2.5 shadow-sm"
+          className="p-4 rounded-lg border space-y-3 shadow-sm"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="space-y-2">
             <div>
-              <h3 className="text-sm font-black">💡 今後作るべきアプリの案</h3>
+              <h3 className="text-sm font-black">💡 未作成の新規アプリ案（アイデア蓄積）</h3>
               <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                （項目にカーソルを合わせるとアプリ概要が表示されます）
+                （まだ存在していないアプリの構想。カーソルまたはクリックで同じアプリ案にアイデアを追記＆プロンプトコピー）
               </span>
             </div>
+
             <form
               onSubmit={(e) => {
                 e.preventDefault();
                 if (!ideaIn.trim()) return;
-                const next: NoteItem[] = [
+                const next: NewAppIdeaItem[] = [
                   {
+                    id: `idea_${Date.now()}`,
                     title: `🚀 ${ideaIn.trim()}`,
-                    target: '新規アプリ案',
+                    target: '新規構想',
                     detail: ideaDetailIn.trim() || 'アプリ概要メモ未設定',
+                    subIdeas: [],
                   },
                   ...ideas,
                 ];
                 setIdeas(next);
                 setIdeaIn('');
                 setIdeaDetailIn('');
-                localStorage.setItem('agy_home_ideas_v6', JSON.stringify(next));
+                localStorage.setItem('agy_home_ideas_v7', JSON.stringify(next));
               }}
-              className="flex flex-wrap gap-1 flex-shrink-0"
+              className="flex flex-wrap gap-1.5"
             >
               <input
                 type="text"
                 value={ideaIn}
                 onChange={(e) => setIdeaIn(e.target.value)}
-                placeholder="＋アプリ名"
-                className="w-28 px-2 py-1 rounded border text-xs"
+                placeholder="＋新規アプリ名"
+                className="w-32 px-2 py-1 rounded border text-xs"
                 style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
               />
               <input
@@ -1574,55 +1784,180 @@ export default function HomeTab({
                 value={ideaDetailIn}
                 onChange={(e) => setIdeaDetailIn(e.target.value)}
                 placeholder="概要メモ(任意)"
-                className="w-32 px-2 py-1 rounded border text-xs"
+                className="flex-1 min-w-[120px] px-2 py-1 rounded border text-xs"
                 style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
               />
               <button
                 type="submit"
-                className="px-2.5 py-1 rounded font-black border text-xs"
+                className="px-3 py-1 rounded font-black border text-xs"
                 style={{ borderColor: 'var(--zelda-cyan)', color: 'var(--zelda-cyan)' }}
               >
                 追加
               </button>
             </form>
           </div>
+
           <div className="flex flex-wrap items-center gap-2 font-bold">
-            {ideas.map((idea, i) => (
-              <div key={`${idea.title}-${i}`} className="relative group">
-                <span
-                  className="px-2.5 py-1 rounded-md border flex items-center gap-1.5 text-xs cursor-help transition hover:opacity-90"
-                  style={{ background: 'var(--bg-card2)', borderColor: 'var(--zelda-cyan)' }}
-                >
-                  <span>{idea.title}</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const next = ideas.filter((_, idx) => idx !== i);
-                      setIdeas(next);
-                      localStorage.setItem('agy_home_ideas_v6', JSON.stringify(next));
+            {ideas.map((idea) => {
+              const isPinned = pinnedIdeaId === idea.id;
+              const promptStr = buildIdeaPrompt(idea);
+              return (
+                <div key={idea.id} className="relative group">
+                  <div
+                    className="px-2.5 py-1 rounded-md border flex items-center gap-1.5 text-xs cursor-pointer transition"
+                    style={{
+                      background: isPinned ? 'rgba(106, 174, 192, 0.2)' : 'var(--bg-card2)',
+                      borderColor: 'var(--zelda-cyan)',
                     }}
-                    className="opacity-60 hover:opacity-100"
                   >
-                    ✕
-                  </button>
-                </span>
-                {/* Hover Detail Tooltip */}
-                <div
-                  className="pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-150 absolute bottom-full left-0 mb-2 z-50 w-64 p-2.5 rounded-lg border-2 shadow-2xl"
-                  style={{ background: 'var(--bg-card)', borderColor: 'var(--zelda-cyan)', color: 'var(--text)' }}
-                >
-                  <div className="text-[11px] font-black mb-0.5" style={{ color: 'var(--zelda-cyan)' }}>
-                    {idea.title}
+                    <button
+                      type="button"
+                      onClick={() => setPinnedIdeaId(isPinned ? null : idea.id)}
+                      className="text-left flex items-center gap-1"
+                    >
+                      <span>{idea.title}</span>
+                      {idea.subIdeas.length > 0 && (
+                        <span className="text-[10px] px-1 rounded" style={{ background: 'rgba(106,174,192,0.2)', color: 'var(--zelda-cyan)' }}>
+                          +{idea.subIdeas.length}
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = ideas.filter((x) => x.id !== idea.id);
+                        setIdeas(next);
+                        if (isPinned) setPinnedIdeaId(null);
+                        localStorage.setItem('agy_home_ideas_v7', JSON.stringify(next));
+                      }}
+                      className="opacity-60 hover:opacity-100"
+                    >
+                      ✕
+                    </button>
                   </div>
-                  <div className="text-[10px] font-bold mb-1" style={{ color: 'var(--zelda-gold)' }}>
-                    連携・領域: {idea.target}
-                  </div>
-                  <div className="text-[11px] font-normal leading-relaxed" style={{ color: 'var(--text-sub)' }}>
-                    {idea.detail}
+
+                  {/* Interactive Hover / Pinned Popover with Sub-Ideas & Creation Prompt */}
+                  <div
+                    className={`${
+                      isPinned ? 'block' : 'hidden group-hover:block'
+                    } absolute bottom-full left-0 pb-2 z-50 w-80 sm:w-96`}
+                  >
+                    <div
+                      className="p-3 rounded-lg border-2 shadow-2xl space-y-2"
+                      style={{ background: 'var(--bg-card)', borderColor: 'var(--zelda-cyan)', color: 'var(--text)' }}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="text-xs font-black" style={{ color: 'var(--zelda-cyan)' }}>
+                            {idea.title}
+                          </div>
+                          <div className="text-[10px] font-bold" style={{ color: 'var(--zelda-gold)' }}>
+                            連携領域: {idea.target}
+                          </div>
+                        </div>
+                        {isPinned && (
+                          <button
+                            type="button"
+                            onClick={() => setPinnedIdeaId(null)}
+                            className="text-[10px] px-1.5 py-0.5 rounded border"
+                            style={{ borderColor: 'var(--border)' }}
+                          >
+                            閉じる
+                          </button>
+                        )}
+                      </div>
+
+                      <div className="text-[11px] font-normal leading-relaxed" style={{ color: 'var(--text-sub)' }}>
+                        {idea.detail}
+                      </div>
+
+                      {idea.subIdeas.length > 0 && (
+                        <div className="space-y-1 pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
+                          <div className="text-[10px] font-black" style={{ color: 'var(--zelda-cyan)' }}>
+                            追加された機能アイデア:
+                          </div>
+                          {idea.subIdeas.map((si, idx) => (
+                            <div key={idx} className="text-[11px] font-normal flex items-center justify-between gap-1">
+                              <span>• {si}</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const next = ideas.map((x) =>
+                                    x.id === idea.id
+                                      ? { ...x, subIdeas: x.subIdeas.filter((_, sIdx) => sIdx !== idx) }
+                                      : x
+                                  );
+                                  setIdeas(next);
+                                  localStorage.setItem('agy_home_ideas_v7', JSON.stringify(next));
+                                }}
+                                className="opacity-50 hover:opacity-100 text-[10px]"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* 同じ新規アプリ案へ後から何度でもアイデアを追記できるフォーム */}
+                      <form
+                        onSubmit={(e) => {
+                          e.preventDefault();
+                          const val = (subIdeaDrafts[idea.id] || '').trim();
+                          if (!val) return;
+                          const next = ideas.map((x) =>
+                            x.id === idea.id ? { ...x, subIdeas: [...x.subIdeas, val] } : x
+                          );
+                          setIdeas(next);
+                          setSubIdeaDrafts((prev) => ({ ...prev, [idea.id]: '' }));
+                          localStorage.setItem('agy_home_ideas_v7', JSON.stringify(next));
+                        }}
+                        className="flex gap-1 pt-1"
+                      >
+                        <input
+                          type="text"
+                          value={subIdeaDrafts[idea.id] || ''}
+                          onChange={(e) => setSubIdeaDrafts((prev) => ({ ...prev, [idea.id]: e.target.value }))}
+                          placeholder="＋このアプリ案に追加アイデアを追記..."
+                          className="flex-1 px-2 py-1 rounded border text-[11px] font-normal"
+                          style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
+                        />
+                        <button
+                          type="submit"
+                          className="px-2 py-1 rounded border text-[10px] font-black"
+                          style={{ borderColor: 'var(--zelda-cyan)', color: 'var(--zelda-cyan)' }}
+                        >
+                          追記
+                        </button>
+                      </form>
+
+                      {/* Antigravity新規作成プロンプト表示＆コピー */}
+                      <div className="p-2 rounded border space-y-1.5" style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-black" style={{ color: 'var(--zelda-gold)' }}>
+                            🤖 Antigravity 作成プロンプト:
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(promptStr).catch(() => {});
+                              notify(`📋 新規アプリ作成プロンプトをコピーしました (${idea.title})`);
+                            }}
+                            className="px-2 py-0.5 rounded font-black text-[10px]"
+                            style={{ background: 'var(--accent)', color: '#1e1a16' }}
+                          >
+                            📋 コピー
+                          </button>
+                        </div>
+                        <pre className="text-[10px] font-normal whitespace-pre-wrap leading-snug" style={{ color: 'var(--text-muted)' }}>
+                          {promptStr}
+                        </pre>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       </div>
