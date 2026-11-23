@@ -15,8 +15,13 @@ interface CalInputItem {
   done: boolean;
 }
 
+type AppSuite = 'money' | 'lifelog' | 'life' | 'other';
+type WasteStatus = 'active' | 'underused' | 'wasted';
+
 interface AppItem {
   id: string;
+  suite: AppSuite;
+  suiteLabel: string;
   icon: string;
   name: string;
   score: number;
@@ -32,40 +37,493 @@ interface AppItem {
   lifelogView?: string;
   localPath: string;
   muted: boolean;
+  wasteNote: string;
 }
 
 const TODAY = 23; // 2026-11-23
+const TELEMETRY_KEY = 'agy_page_telemetry_v1';
 
 const INITIAL_CAL_ITEMS: CalInputItem[] = [
-  { id: 'c1', day: 14, icon: '🏢', label: 'Q2 IR', targetApp: 'Money & Assets', kvKey: 'corp_q2', done: true },
-  { id: 'q1', day: 21, icon: '🏢', label: 'Q3 IR', targetApp: 'Money & Assets', kvKey: 'corp_q3', done: false },
-  { id: 'q2', day: 22, icon: '📈', label: 'Econ 11', targetApp: 'Money & Assets', kvKey: 'econ_nov', done: true },
-  { id: 'q3', day: 23, icon: '🍎', label: 'Shopping CSV', targetApp: 'Shopping & Items', kvKey: 'kaimono_w4', done: false },
-  { id: 'q4', day: 25, icon: '🔥', label: 'Habits CSV', targetApp: 'Life Dashboard', kvKey: 'streaks_w4', done: false },
-  { id: 'q5', day: 28, icon: '💰', label: 'NISA Assets', targetApp: 'Money & Assets', kvKey: 'asset_nov', done: false },
-  { id: 'q6', day: 29, icon: '💳', label: 'MF Budget', targetApp: 'Money & Assets', kvKey: 'budget_nov', done: false },
-  { id: 'q7', day: 30, icon: '📚', label: 'Books CSV', targetApp: 'Life Dashboard', kvKey: 'books_nov', done: false },
+  { id: 'c1', day: 14, icon: '🏢', label: 'Q2 IR', targetApp: 'Money: 企業分析', kvKey: 'corp_q2', done: true },
+  { id: 'q1', day: 21, icon: '🏢', label: 'Q3 IR', targetApp: 'Money: 企業分析', kvKey: 'corp_q3', done: false },
+  { id: 'q2', day: 22, icon: '🌐', label: 'Econ 11', targetApp: 'Money: 経済指標', kvKey: 'econ_nov', done: true },
+  { id: 'q3', day: 23, icon: '🍎', label: 'Shopping CSV', targetApp: 'Lifelog: 食料・日用品', kvKey: 'kaimono_w4', done: false },
+  { id: 'q5', day: 28, icon: '📈', label: 'NISA Assets', targetApp: 'Money: 資産運用', kvKey: 'asset_nov', done: false },
+  { id: 'q6', day: 29, icon: '🧾', label: 'MF Budget', targetApp: 'Money: 家計簿', kvKey: 'budget_nov', done: false },
+  { id: 'q7', day: 30, icon: '📖', label: 'Books CSV', targetApp: 'Lifelog: 読書図鑑', kvKey: 'books_nov', done: false },
 ];
 
 const INITIAL_APPS: AppItem[] = [
-  { id: 'money', icon: '💰', name: 'Money & Assets', score: 90, visit: '週3-4回・12分', visitScore: 90, design: 90, btnLabel: '91 / 死3', btnCount: 94, sizeLabel: '837MB', mb: 837, url: 'https://money-dashboard-iota-three.vercel.app', localPath: '~/money-dashboard', muted: false },
-  { id: 'health', icon: '🏠', name: 'Life Dashboard', score: 89, visit: '毎日・6分', visitScore: 91, design: 86, btnLabel: '92 / 死6', btnCount: 98, sizeLabel: '753MB', mb: 753, url: 'https://health-dashboard-dusky-xi.vercel.app', internalTab: 'health', localPath: '~/health-dashboard', muted: false },
-  { id: 'kaimono', icon: '🍎', name: '食料・日用品 (Lifelog)', score: 86, visit: '週3-5回', visitScore: 92, design: 98, btnLabel: '81 / 死0', btnCount: 81, sizeLabel: '1.2MB', mb: 1.2, url: 'http://127.0.0.1:8788/?view=overview', lifelogView: 'overview', localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog', muted: false },
-  { id: 'kaimono-assets', icon: '⚔️', name: '持ち物ポーチ (Lifelog)', score: 86, visit: '週2-4回', visitScore: 88, design: 96, btnLabel: '87点', btnCount: 87, sizeLabel: '1.2MB', mb: 1.2, url: 'http://127.0.0.1:8788/?view=assets', lifelogView: 'assets', localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog', muted: false },
-  { id: 'kaimono-books', icon: '📖', name: '読書図鑑 (Lifelog)', score: 85, visit: '週2-3回', visitScore: 84, design: 95, btnLabel: '30冊', btnCount: 30, sizeLabel: '1.2MB', mb: 1.2, url: 'http://127.0.0.1:8788/?view=books', lifelogView: 'books', localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog', muted: false },
-  { id: 'kaimono-mindset', icon: '🧭', name: '思考マップ (Lifelog)', score: 84, visit: '月2-4回', visitScore: 78, design: 94, btnLabel: 'レーダー', btnCount: 12, sizeLabel: '1.2MB', mb: 1.2, url: 'http://127.0.0.1:8788/?view=mindset-map', lifelogView: 'mindset-map', localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog', muted: false },
-  { id: 'kaimono-self', icon: '🪞', name: '自己分析・基本情報 (Lifelog)', score: 83, visit: '月1-2回', visitScore: 74, design: 92, btnLabel: '基本表', btnCount: 6, sizeLabel: '1.2MB', mb: 1.2, url: 'http://127.0.0.1:8788/?view=self-analysis', lifelogView: 'self-analysis', localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog', muted: false },
-  { id: 'tvid', icon: '🎥', name: 'Tennis Video Maker', score: 86, visit: '週2-3回・25分', visitScore: 91, design: 85, btnLabel: '138 / 死2', btnCount: 140, sizeLabel: '58MB', mb: 58, url: 'http://localhost:8090', localPath: '~/tennis-score/tools', muted: false },
-  { id: 'spanish', icon: '🇪🇸', name: 'Spanish Learning', score: 85, visit: '週4-5回・5分', visitScore: 82, design: 85, btnLabel: '24 / 死0', btnCount: 24, sizeLabel: '380KB', mb: 0.38, url: 'https://spanish-app-kappa-mauve.vercel.app', localPath: '~/spanish-learning-app', muted: false },
-  { id: 'tennis', icon: '🎾', name: 'Tennis Score', score: 84, visit: '週2-3回・20分', visitScore: 89, design: 82, btnLabel: '146 / 死19', btnCount: 165, sizeLabel: '876MB', mb: 876, url: 'https://tennis-score-pi.vercel.app', localPath: '~/tennis-score', muted: false },
-  { id: 'rio', icon: '🏆', name: 'RIO Rankings', score: 82, visit: '月2-4回・3分', visitScore: 67, design: 88, btnLabel: '19 / 死0', btnCount: 19, sizeLabel: '212KB', mb: 0.21, url: 'https://rio-rankings.vercel.app', localPath: '~/rio-rankings', muted: false },
-  { id: 'rally', icon: '🎬', name: 'Rally Auto-Cutter', score: 78, visit: '月2-3回・10分', visitScore: 70, design: 84, btnLabel: '9 / 死0', btnCount: 9, sizeLabel: '11MB', mb: 11, url: 'http://localhost:8088', localPath: '~/.gemini/antigravity/scratch/tennis-rally-cutter', muted: false },
-  { id: 'yt', icon: '▶️', name: 'YouTube Summarizer', score: 76, visit: '毎日自動', visitScore: 73, design: 72, btnLabel: '0 (自動)', btnCount: 0, sizeLabel: '40KB', mb: 0.04, url: 'https://script.google.com', localPath: '~/.gemini/antigravity/scratch/youtube_summarizer', muted: false },
-  { id: 'vauto', icon: '🎞️', name: 'Video Auto-Editor', score: 74, visit: '月1-2回・8分', visitScore: 62, design: 70, btnLabel: '4 / 死2', btnCount: 6, sizeLabel: '502MB', mb: 502, url: 'http://localhost:8000/resolve', localPath: '~/video-auto-editor', muted: false },
-  { id: 'imgdec', icon: '🧩', name: 'Image Decomposer', score: 48, visit: '放置・0分', visitScore: 5, design: 60, btnLabel: '23 (放置)', btnCount: 23, sizeLabel: '305MB', mb: 305, url: '', localPath: '~/.gemini/antigravity/scratch/image-decomposer-app', muted: true },
-  { id: 'pvid', icon: '🎙️', name: 'Podcast Video Gen', score: 47, visit: '休眠・0分', visitScore: 13, design: 55, btnLabel: '1 (休眠)', btnCount: 1, sizeLabel: '1.2GB', mb: 1228, url: '', localPath: '~/.gemini/antigravity/scratch/podcast-video-generator', muted: true },
-  { id: 'cisland', icon: '🏝️', name: 'Claude Island', score: 46, visit: '休眠・0分', visitScore: 5, design: 68, btnLabel: '0 (遺物)', btnCount: 0, sizeLabel: '469MB', mb: 469, url: '', localPath: '~/ClaudeIsland', muted: true },
-  { id: 'palign', icon: '🎚️', name: 'Podcast Align', score: 34, visit: '休眠・0分', visitScore: 5, design: 20, btnLabel: '0 (削除)', btnCount: 0, sizeLabel: '1.3GB', mb: 1331, url: '', localPath: '~/podcast-align', muted: true },
+  // ── 1. Money Dashboard 全6ページ ──
+  {
+    id: 'money-economics',
+    suite: 'money',
+    suiteLabel: 'Money',
+    icon: '🌐',
+    name: 'Money: 経済指標 (/economics)',
+    score: 94,
+    visit: '週3-4回・10分',
+    visitScore: 93,
+    design: 96,
+    btnLabel: '28 / 死0',
+    btnCount: 28,
+    sizeLabel: '140MB',
+    mb: 140,
+    url: 'https://money-dashboard-iota-three.vercel.app/economics',
+    localPath: '~/money-dashboard/app/economics',
+    muted: false,
+    wasteNote: '月移動カレンダー＋大型グラフ稼働中',
+  },
+  {
+    id: 'money-assets',
+    suite: 'money',
+    suiteLabel: 'Money',
+    icon: '📈',
+    name: 'Money: 資産運用 (/assets)',
+    score: 92,
+    visit: '週2-3回・8分',
+    visitScore: 90,
+    design: 92,
+    btnLabel: '22 / 死0',
+    btnCount: 22,
+    sizeLabel: '140MB',
+    mb: 140,
+    url: 'https://money-dashboard-iota-three.vercel.app/assets',
+    localPath: '~/money-dashboard/app/assets',
+    muted: false,
+    wasteNote: 'NISA・投信残高トラッキング主力',
+  },
+  {
+    id: 'money-budget',
+    suite: 'money',
+    suiteLabel: 'Money',
+    icon: '🧾',
+    name: 'Money: 家計簿 (/budget)',
+    score: 90,
+    visit: '週2-3回・12分',
+    visitScore: 88,
+    design: 90,
+    btnLabel: '19 / 死0',
+    btnCount: 19,
+    sizeLabel: '140MB',
+    mb: 140,
+    url: 'https://money-dashboard-iota-three.vercel.app/budget',
+    localPath: '~/money-dashboard/app/budget',
+    muted: false,
+    wasteNote: 'MoneyForward・Amex集計稼働中',
+  },
+  {
+    id: 'money-home',
+    suite: 'money',
+    suiteLabel: 'Money',
+    icon: '💰',
+    name: 'Money: ホーム (/)',
+    score: 88,
+    visit: '週2-3回・5分',
+    visitScore: 85,
+    design: 90,
+    btnLabel: '14 / 死0',
+    btnCount: 14,
+    sizeLabel: '139MB',
+    mb: 139,
+    url: 'https://money-dashboard-iota-three.vercel.app/',
+    localPath: '~/money-dashboard/app',
+    muted: false,
+    wasteNote: '資産・IRサマリー画面',
+  },
+  {
+    id: 'money-companies',
+    suite: 'money',
+    suiteLabel: 'Money',
+    icon: '🏢',
+    name: 'Money: 企業分析 (/companies)',
+    score: 81,
+    visit: '月2-4回・10分',
+    visitScore: 72,
+    design: 88,
+    btnLabel: '16 / 死1',
+    btnCount: 16,
+    sizeLabel: '139MB',
+    mb: 139,
+    url: 'https://money-dashboard-iota-three.vercel.app/companies',
+    localPath: '~/money-dashboard/app/companies',
+    muted: false,
+    wasteNote: '決算時期のみ訪問（Q3 IR未更新あり）',
+  },
+  {
+    id: 'money-lifeplan',
+    suite: 'money',
+    suiteLabel: 'Money',
+    icon: '🧭',
+    name: 'Money: ライフプラン (/lifeplan)',
+    score: 73,
+    visit: '月1回未満・3分',
+    visitScore: 58,
+    design: 86,
+    btnLabel: '8 / 死0',
+    btnCount: 8,
+    sizeLabel: '139MB',
+    mb: 139,
+    url: 'https://money-dashboard-iota-three.vercel.app/lifeplan',
+    localPath: '~/money-dashboard/app/lifeplan',
+    muted: false,
+    wasteNote: '長期シミュレーション（訪問頻度低・要確認）',
+  },
+
+  // ── 2. Life Dashboard 全2ページ（習慣タブ削除済） ──
+  {
+    id: 'life-home',
+    suite: 'life',
+    suiteLabel: 'Life',
+    icon: '🏠',
+    name: 'Life: ホーム (全アプリ統合ハブ)',
+    score: 95,
+    visit: '毎日・8分',
+    visitScore: 98,
+    design: 95,
+    btnLabel: '42 / 死0',
+    btnCount: 42,
+    sizeLabel: '376MB',
+    mb: 376,
+    url: 'https://health-dashboard-dusky-xi.vercel.app',
+    internalTab: 'home',
+    localPath: '~/health-dashboard/components/tabs/HomeTab.tsx',
+    muted: false,
+    wasteNote: 'メイン起点ハブ（毎日稼働）',
+  },
+  {
+    id: 'life-health',
+    suite: 'life',
+    suiteLabel: 'Life',
+    icon: '🏃',
+    name: 'Life: 健康 (体組成・食事・PFC)',
+    score: 89,
+    visit: '毎日・5分',
+    visitScore: 91,
+    design: 88,
+    btnLabel: '36 / 死0',
+    btnCount: 36,
+    sizeLabel: '377MB',
+    mb: 377,
+    url: 'https://health-dashboard-dusky-xi.vercel.app',
+    internalTab: 'health',
+    localPath: '~/health-dashboard/app/page.tsx',
+    muted: false,
+    wasteNote: 'Health Planet & あすけん連携稼働中',
+  },
+
+  // ── 3. Lifelog (買い物・持ち物・読書・思考・自己分析) 全5ページ ──
+  {
+    id: 'kaimono',
+    suite: 'lifelog',
+    suiteLabel: 'Lifelog',
+    icon: '🍎',
+    name: 'Lifelog: 食料・日用品 (?view=overview)',
+    score: 88,
+    visit: '週3-5回',
+    visitScore: 92,
+    design: 98,
+    btnLabel: '81 / 死0',
+    btnCount: 81,
+    sizeLabel: '240KB',
+    mb: 0.24,
+    url: 'http://127.0.0.1:8788/?view=overview',
+    lifelogView: 'overview',
+    localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog',
+    muted: false,
+    wasteNote: '買い出し・消耗品サイクル主力',
+  },
+  {
+    id: 'kaimono-assets',
+    suite: 'lifelog',
+    suiteLabel: 'Lifelog',
+    icon: '⚔️',
+    name: 'Lifelog: 持ち物ポーチ (?view=assets)',
+    score: 86,
+    visit: '週2-4回',
+    visitScore: 88,
+    design: 96,
+    btnLabel: '87点管理',
+    btnCount: 87,
+    sizeLabel: '240KB',
+    mb: 0.24,
+    url: 'http://127.0.0.1:8788/?view=assets',
+    lifelogView: 'assets',
+    localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog',
+    muted: false,
+    wasteNote: '87アイテム減価償却・コスパ稼働中',
+  },
+  {
+    id: 'kaimono-books',
+    suite: 'lifelog',
+    suiteLabel: 'Lifelog',
+    icon: '📖',
+    name: 'Lifelog: 読書図鑑 (?view=books)',
+    score: 85,
+    visit: '週2-3回',
+    visitScore: 84,
+    design: 95,
+    btnLabel: '30冊',
+    btnCount: 30,
+    sizeLabel: '240KB',
+    mb: 0.24,
+    url: 'http://127.0.0.1:8788/?view=books',
+    lifelogView: 'books',
+    localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog',
+    muted: false,
+    wasteNote: '読書ログ・学び回収稼働中',
+  },
+  {
+    id: 'kaimono-mindset',
+    suite: 'lifelog',
+    suiteLabel: 'Lifelog',
+    icon: '🧭',
+    name: 'Lifelog: 思考マップ (?view=mindset-map)',
+    score: 79,
+    visit: '月2-4回',
+    visitScore: 72,
+    design: 94,
+    btnLabel: '12ノード',
+    btnCount: 12,
+    sizeLabel: '240KB',
+    mb: 0.24,
+    url: 'http://127.0.0.1:8788/?view=mindset-map',
+    lifelogView: 'mindset-map',
+    localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog',
+    muted: false,
+    wasteNote: '月次振り返り用（更新頻度やや低）',
+  },
+  {
+    id: 'kaimono-self',
+    suite: 'lifelog',
+    suiteLabel: 'Lifelog',
+    icon: '🪞',
+    name: 'Lifelog: 自己分析・基本情報 (?view=self-analysis)',
+    score: 75,
+    visit: '月1-2回',
+    visitScore: 65,
+    design: 92,
+    btnLabel: '6セクション',
+    btnCount: 6,
+    sizeLabel: '240KB',
+    mb: 0.24,
+    url: 'http://127.0.0.1:8788/?view=self-analysis',
+    lifelogView: 'self-analysis',
+    localPath: '~/.gemini/antigravity/scratch/kaimono-lifelog',
+    muted: false,
+    wasteNote: '固定プロフィール（アクセス頻度低・要確認）',
+  },
+
+  // ── 4. その他 Web & ローカルアプリ 全11件 ──
+  {
+    id: 'tvid',
+    suite: 'other',
+    suiteLabel: 'Other',
+    icon: '🎥',
+    name: 'Tennis Video Maker',
+    score: 86,
+    visit: '週2-3回・25分',
+    visitScore: 91,
+    design: 85,
+    btnLabel: '138 / 死2',
+    btnCount: 140,
+    sizeLabel: '58MB',
+    mb: 58,
+    url: 'http://localhost:8090',
+    localPath: '~/tennis-score/tools',
+    muted: false,
+    wasteNote: '試合動画編集で高稼働',
+  },
+  {
+    id: 'spanish',
+    suite: 'other',
+    suiteLabel: 'Other',
+    icon: '🇪🇸',
+    name: 'Spanish Learning',
+    score: 85,
+    visit: '週4-5回・5分',
+    visitScore: 82,
+    design: 85,
+    btnLabel: '24 / 死0',
+    btnCount: 24,
+    sizeLabel: '380KB',
+    mb: 0.38,
+    url: 'https://spanish-app-kappa-mauve.vercel.app',
+    localPath: '~/spanish-learning-app',
+    muted: false,
+    wasteNote: '軽量・語学学習で継続稼働',
+  },
+  {
+    id: 'tennis',
+    suite: 'other',
+    suiteLabel: 'Other',
+    icon: '🎾',
+    name: 'Tennis Score',
+    score: 84,
+    visit: '週2-3回・20分',
+    visitScore: 89,
+    design: 82,
+    btnLabel: '146 / 死19',
+    btnCount: 165,
+    sizeLabel: '876MB',
+    mb: 876,
+    url: 'https://tennis-score-pi.vercel.app',
+    localPath: '~/tennis-score',
+    muted: false,
+    wasteNote: '稼働中だが死ボタン19個・容量大',
+  },
+  {
+    id: 'rio',
+    suite: 'other',
+    suiteLabel: 'Other',
+    icon: '🏆',
+    name: 'RIO Rankings',
+    score: 80,
+    visit: '月2-4回・3分',
+    visitScore: 67,
+    design: 88,
+    btnLabel: '19 / 死0',
+    btnCount: 19,
+    sizeLabel: '212KB',
+    mb: 0.21,
+    url: 'https://rio-rankings.vercel.app',
+    localPath: '~/rio-rankings',
+    muted: false,
+    wasteNote: '大会後のみアクセス（軽量）',
+  },
+  {
+    id: 'rally',
+    suite: 'other',
+    suiteLabel: 'Other',
+    icon: '🎬',
+    name: 'Rally Auto-Cutter',
+    score: 77,
+    visit: '月2-3回・10分',
+    visitScore: 70,
+    design: 84,
+    btnLabel: '9 / 死0',
+    btnCount: 9,
+    sizeLabel: '11MB',
+    mb: 11,
+    url: 'http://localhost:8088',
+    localPath: '~/.gemini/antigravity/scratch/tennis-rally-cutter',
+    muted: false,
+    wasteNote: 'ラリー抽出補助ツール',
+  },
+  {
+    id: 'yt',
+    suite: 'other',
+    suiteLabel: 'Other',
+    icon: '▶️',
+    name: 'YouTube Summarizer',
+    score: 76,
+    visit: '毎日自動',
+    visitScore: 73,
+    design: 72,
+    btnLabel: '0 (GAS自動)',
+    btnCount: 0,
+    sizeLabel: '40KB',
+    mb: 0.04,
+    url: 'https://script.google.com',
+    localPath: '~/.gemini/antigravity/scratch/youtube_summarizer',
+    muted: false,
+    wasteNote: 'バックグラウンド自動稼働',
+  },
+  {
+    id: 'vauto',
+    suite: 'other',
+    suiteLabel: 'Other',
+    icon: '🎞️',
+    name: 'Video Auto-Editor',
+    score: 71,
+    visit: '月1-2回・8分',
+    visitScore: 58,
+    design: 70,
+    btnLabel: '4 / 死2',
+    btnCount: 6,
+    sizeLabel: '502MB',
+    mb: 502,
+    url: 'http://localhost:8000/resolve',
+    localPath: '~/video-auto-editor',
+    muted: false,
+    wasteNote: '502MB占有・Tennis Video Makerと機能重複気味',
+  },
+  {
+    id: 'imgdec',
+    suite: 'other',
+    suiteLabel: 'Other',
+    icon: '🧩',
+    name: 'Image Decomposer',
+    score: 48,
+    visit: '放置・0分',
+    visitScore: 5,
+    design: 60,
+    btnLabel: '23 (放置)',
+    btnCount: 23,
+    sizeLabel: '305MB',
+    mb: 305,
+    url: '',
+    localPath: '~/.gemini/antigravity/scratch/image-decomposer-app',
+    muted: true,
+    wasteNote: '🚨 完全放置・305MB無駄（削除候補）',
+  },
+  {
+    id: 'pvid',
+    suite: 'other',
+    suiteLabel: 'Other',
+    icon: '🎙️',
+    name: 'Podcast Video Gen',
+    score: 47,
+    visit: '休眠・0分',
+    visitScore: 13,
+    design: 55,
+    btnLabel: '1 (休眠)',
+    btnCount: 1,
+    sizeLabel: '1.2GB',
+    mb: 1228,
+    url: '',
+    localPath: '~/.gemini/antigravity/scratch/podcast-video-generator',
+    muted: true,
+    wasteNote: '🚨 休眠中・1.2GB無駄（削除候補）',
+  },
+  {
+    id: 'cisland',
+    suite: 'other',
+    suiteLabel: 'Other',
+    icon: '🏝️',
+    name: 'Claude Island',
+    score: 46,
+    visit: '休眠・0分',
+    visitScore: 5,
+    design: 68,
+    btnLabel: '0 (遺物)',
+    btnCount: 0,
+    sizeLabel: '469MB',
+    mb: 469,
+    url: '',
+    localPath: '~/ClaudeIsland',
+    muted: true,
+    wasteNote: '🚨 アクセス0・469MB無駄（削除候補）',
+  },
+  {
+    id: 'palign',
+    suite: 'other',
+    suiteLabel: 'Other',
+    icon: '🎚️',
+    name: 'Podcast Align',
+    score: 34,
+    visit: '休眠・0分',
+    visitScore: 5,
+    design: 20,
+    btnLabel: '0 (削除推奨)',
+    btnCount: 0,
+    sizeLabel: '1.3GB',
+    mb: 1331,
+    url: '',
+    localPath: '~/podcast-align',
+    muted: true,
+    wasteNote: '🚨 アクセス0・1.3GB無駄（最優先削除候補）',
+  },
 ];
 
 const INITIAL_TASKS = ['🎥 Delete Raw MP4s', '🏠 Fix Dead Links', '🍎 Git Init Shopping App', '🎾 Push 24 Commits'];
@@ -88,11 +546,20 @@ export default function HomeTab({
   const [taskIn, setTaskIn] = useState('');
   const [ideaIn, setIdeaIn] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
+  const [suiteFilter, setSuiteFilter] = useState<'all' | AppSuite | 'waste'>('all');
   const [editingUrlId, setEditingUrlId] = useState<string | null>(null);
   const [customUrls, setCustomUrls] = useState<Record<string, string>>({});
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const activeUploadIdRef = useRef<string | null>(null);
+
+  const [lifelogStats, setLifelogStats] = useState<
+    Record<string, { visits: number; updates: number; last_visited_at?: string; last_updated_at?: string }>
+  >({});
+  const [cloudTelemetry, setCloudTelemetry] = useState<
+    Record<string, { visits: number; dwellSec: number; lastVisitedAt: string }>
+  >({});
+  const [appAccessLogs, setAppAccessLogs] = useState<Record<string, { count: number; lastAt: string }>>({});
 
   useEffect(() => {
     try {
@@ -120,19 +587,42 @@ export default function HomeTab({
     } catch {
       // ignore
     }
+
+    // 1. Lifelog (127.0.0.1:8788) ページ別アクセス・更新統計取得
     fetch('http://127.0.0.1:8788/api/stats')
       .then((r) => r.json())
       .then((d) => {
         if (d?.ok && d.views) setLifelogStats(d.views);
       })
       .catch(() => {});
+
+    // 2. Supabase クラウド上の全ページ共通テレメトリ (Money Dashboard 全6ページ + Life Dashboard 全ページ) 取得
+    if (supabase) {
+      supabase
+        .from('lifeplan_kv')
+        .select('data')
+        .eq('key', TELEMETRY_KEY)
+        .maybeSingle()
+        .then(
+          ({ data }) => {
+            if (data?.data) {
+              setCloudTelemetry(
+                data.data as Record<string, { visits: number; dwellSec: number; lastVisitedAt: string }>
+              );
+            }
+          },
+          () => {}
+        );
+    }
   }, []);
 
-  const [lifelogStats, setLifelogStats] = useState<Record<string, { visits: number; updates: number; last_visited_at?: string; last_updated_at?: string }>>({});
-  const [appAccessLogs, setAppAccessLogs] = useState<Record<string, { count: number; lastAt: string }>>({});
-
   const recordAppClick = (appId: string) => {
-    const nowStr = new Date().toLocaleString('ja-JP', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
+    const nowStr = new Date().toLocaleString('ja-JP', {
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
     setAppAccessLogs((prev) => {
       const cur = prev[appId] || { count: 0, lastAt: '' };
       const next = { ...prev, [appId]: { count: cur.count + 1, lastAt: nowStr } };
@@ -141,6 +631,76 @@ export default function HomeTab({
       } catch {}
       return next;
     });
+
+    // クラウドテレメトリにも記録
+    if (supabase) {
+      const curCloud = cloudTelemetry[appId] || { visits: 0, dwellSec: 0, lastVisitedAt: '' };
+      const nextCloud = {
+        ...cloudTelemetry,
+        [appId]: {
+          visits: curCloud.visits + 1,
+          dwellSec: curCloud.dwellSec + 30,
+          lastVisitedAt: new Date().toISOString(),
+        },
+      };
+      setCloudTelemetry(nextCloud);
+      supabase
+        .from('lifeplan_kv')
+        .upsert({
+          key: TELEMETRY_KEY,
+          data: nextCloud,
+          updated_at: new Date().toISOString(),
+        })
+        .then();
+    }
+  };
+
+  // 各ページの「実アクセス回数」と「無駄・死蔵ステータス」を計算
+  const getPageTelemetryInfo = (a: AppItem): {
+    liveVisits: number;
+    liveUpdates: number;
+    dwellMin: number;
+    lastAccessStr: string;
+    wasteStatus: WasteStatus;
+    dynamicScore: number;
+  } => {
+    const ll = a.lifelogView ? lifelogStats[a.lifelogView] : undefined;
+    const cloud = cloudTelemetry[a.id];
+    const local = appAccessLogs[a.id];
+
+    const liveVisits = (ll?.visits || 0) + (cloud?.visits || 0) + (local?.count || 0);
+    const liveUpdates = ll?.updates || 0;
+    const dwellMin = cloud?.dwellSec ? Math.max(1, Math.round(cloud.dwellSec / 60)) : 0;
+
+    let lastAccessStr = '';
+    if (ll?.last_visited_at || ll?.last_updated_at) {
+      lastAccessStr = (ll.last_updated_at || ll.last_visited_at || '').slice(5, 16);
+    } else if (cloud?.lastVisitedAt) {
+      lastAccessStr = cloud.lastVisitedAt.slice(5, 16).replace('T', ' ');
+    } else if (local?.lastAt) {
+      lastAccessStr = local.lastAt;
+    }
+
+    // 無駄・死蔵判定ロジック
+    let wasteStatus: WasteStatus = 'active';
+    if (a.muted || a.score < 55 || a.visitScore <= 15) {
+      wasteStatus = 'wasted';
+    } else if (a.visitScore < 75 && liveVisits === 0) {
+      wasteStatus = 'underused';
+    }
+
+    // 実アクセスがあればランキングスコアに加点（最大100）
+    const bonus = Math.min(8, liveVisits * 2 + liveUpdates * 2);
+    const dynamicScore = Math.min(100, a.score + bonus);
+
+    return {
+      liveVisits,
+      liveUpdates,
+      dwellMin,
+      lastAccessStr,
+      wasteStatus,
+      dynamicScore,
+    };
   };
 
   const notify = (msg: string) => {
@@ -182,7 +742,6 @@ export default function HomeTab({
     notify(`✓ ${filename} → ${targetItem?.targetApp ?? 'App'} へ取込完了`);
   };
 
-  // CSVボタン表示用：期限到来(遅れ＆今日)を目立たせ、未来(未到来)や完了はグレー化
   const sortedCsvButtons = useMemo(() => {
     return [...calItems].sort((a, b) => {
       const aScore = a.done ? 3 : a.day < TODAY ? 0 : a.day === TODAY ? 1 : 2;
@@ -197,13 +756,43 @@ export default function HomeTab({
   const doneCount = calItems.filter((c) => c.done).length;
   const progressPct = Math.round((doneCount / calItems.length) * 100);
 
-  const visibleApps = useMemo(() => {
-    const q = searchQuery.trim().toLowerCase();
+  const enrichedApps = useMemo(() => {
     return apps
       .filter((a) => !deletedIds.includes(a.id))
-      .filter((a) => (!q ? true : a.name.toLowerCase().includes(q)))
-      .sort((a, b) => (a.muted ? 1 : 0) - (b.muted ? 1 : 0) || b.score - a.score);
-  }, [apps, deletedIds, searchQuery]);
+      .map((a) => ({
+        ...a,
+        telemetry: getPageTelemetryInfo(a),
+      }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apps, deletedIds, lifelogStats, cloudTelemetry, appAccessLogs]);
+
+  const auditCounts = useMemo(() => {
+    let active = 0;
+    let underused = 0;
+    let wasted = 0;
+    enrichedApps.forEach((a) => {
+      if (a.telemetry.wasteStatus === 'active') active++;
+      else if (a.telemetry.wasteStatus === 'underused') underused++;
+      else wasted++;
+    });
+    return { active, underused, wasted };
+  }, [enrichedApps]);
+
+  const visibleApps = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    return enrichedApps
+      .filter((a) => {
+        if (suiteFilter === 'all') return true;
+        if (suiteFilter === 'waste') return a.telemetry.wasteStatus !== 'active';
+        return a.suite === suiteFilter;
+      })
+      .filter((a) => (!q ? true : a.name.toLowerCase().includes(q) || a.wasteNote.toLowerCase().includes(q)))
+      .sort(
+        (a, b) =>
+          (a.muted ? 1 : 0) - (b.muted ? 1 : 0) ||
+          b.telemetry.dynamicScore - a.telemetry.dynamicScore
+      );
+  }, [enrichedApps, searchQuery, suiteFilter]);
 
   const savedMB = apps
     .filter((a) => deletedIds.includes(a.id) || a.muted)
@@ -236,7 +825,7 @@ export default function HomeTab({
         }}
       />
 
-      {/* ROW 1: 期限別 CSV/データ取込ボタンバー (期限到来=強調 / 遅れ=赤太枠 / 未来・完了=グレー) */}
+      {/* ROW 1: 期限別 CSV/データ取込ボタンバー */}
       <div
         className="p-3 rounded-lg border space-y-2.5 shadow-sm"
         style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
@@ -278,7 +867,6 @@ export default function HomeTab({
           </div>
         </div>
 
-        {/* All CSV / Input Action Buttons (Overdue = Red Highlight, Today = Gold Highlight, Future/Done = Gray) */}
         <div className="flex flex-wrap items-center gap-2">
           {sortedCsvButtons.map((item) => {
             const isOverdue = !item.done && item.day < TODAY;
@@ -345,7 +933,7 @@ export default function HomeTab({
         </div>
       </div>
 
-      {/* ROW 2: FULL-WIDTH LARGE NOVEMBER CALENDAR (12 cols) */}
+      {/* ROW 2: FULL-WIDTH LARGE NOVEMBER CALENDAR */}
       <div
         className="p-3.5 rounded-lg border space-y-2.5 shadow-sm"
         style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
@@ -448,22 +1036,37 @@ export default function HomeTab({
         </div>
       </div>
 
-      {/* ROW 3: ALL 14 WEB & LOCAL APPS (NO HEIGHT CAP — ALL VISIBLE AT ONCE, WIDER SPACING) */}
+      {/* ROW 3: 全アプリ・全24ページの統合ランキング ＆ アクセス有無・無駄診断 */}
       <div
-        className="p-3.5 rounded-lg border space-y-2.5 shadow-sm"
+        className="p-3.5 rounded-lg border space-y-3 shadow-sm"
         style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2.5">
-            <h2 className="text-sm font-black">🕹️ All 14 Apps Launcher &amp; Ranking</h2>
-            <span className="text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
-              全アプリ一覧（クリックで直接アクセス）
-            </span>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <h2 className="text-sm font-black">🕹️ 全アプリ・全24ページ 統合ランキング ＆ 無駄・死蔵診断</h2>
+            <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-extrabold">
+              <span
+                className="px-2 py-0.5 rounded border"
+                style={{ background: 'rgba(111, 176, 135, 0.16)', borderColor: 'var(--zelda-zonai)', color: 'var(--zelda-zonai)' }}
+              >
+                🟢 稼働中 {auditCounts.active}ページ
+              </span>
+              <span
+                className="px-2 py-0.5 rounded border"
+                style={{ background: 'rgba(217, 168, 78, 0.16)', borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
+              >
+                🟡 低頻度・要確認 {auditCounts.underused}ページ
+              </span>
+              <span
+                className="px-2 py-0.5 rounded border"
+                style={{ background: 'rgba(239, 68, 68, 0.18)', borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}
+              >
+                🔴 無駄・死蔵 {auditCounts.wasted}ページ (削減可能 {(savedMB / 1024).toFixed(2)}GB)
+              </span>
+            </div>
           </div>
+
           <div className="flex items-center gap-2">
-            <span className="text-xs font-black" style={{ color: 'var(--zelda-gold)' }}>
-              🧹 Reclaimable: {(savedMB / 1024).toFixed(2)}GB
-            </span>
             {deletedIds.length > 0 && (
               <button
                 type="button"
@@ -474,39 +1077,97 @@ export default function HomeTab({
                 className="px-2 py-1 rounded text-[11px] font-bold border"
                 style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
               >
-                ↩ Restore
+                ↩ Restore ({deletedIds.length})
               </button>
             )}
             <input
               type="search"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="🔍 Search app..."
-              className="px-2.5 py-1 rounded border text-xs w-44"
+              placeholder="🔍 ページ名・診断で検索..."
+              className="px-2.5 py-1 rounded border text-xs w-48"
               style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
             />
           </div>
+        </div>
+
+        {/* スイート・無駄診断フィルタボタン */}
+        <div className="flex flex-wrap items-center gap-1.5">
+          {[
+            { id: 'all', label: `すべて表示 (${enrichedApps.length})` },
+            { id: 'money', label: '💰 Money 全ページ (6)' },
+            { id: 'lifelog', label: '🍎 Lifelog 全ページ (5)' },
+            { id: 'life', label: '🏃 Life 全ページ (2)' },
+            { id: 'other', label: '🎾 他アプリ (11)' },
+            { id: 'waste', label: `🚨 無駄・低頻度のみ (${auditCounts.underused + auditCounts.wasted})` },
+          ].map((f) => {
+            const active = suiteFilter === f.id;
+            return (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => setSuiteFilter(f.id as typeof suiteFilter)}
+                className="px-2.5 py-1 rounded-lg text-xs font-extrabold border transition"
+                style={{
+                  background: active ? 'var(--accent)' : 'var(--bg-card2)',
+                  borderColor: active ? 'var(--zelda-gold)' : 'var(--border)',
+                  color: active ? '#1e1a16' : 'var(--text)',
+                }}
+              >
+                {f.label}
+              </button>
+            );
+          })}
         </div>
 
         <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
           <table className="w-full text-left text-xs border-collapse">
             <thead style={{ background: '#212823', color: '#e4dac6' }}>
               <tr>
-                <th className="py-2.5 px-3">App (Click to Open)</th>
+                <th className="py-2.5 px-3">順位 &amp; ページ名 (クリックで開く)</th>
+                <th className="py-2.5 px-3">区分</th>
                 <th className="py-2.5 px-3">Score</th>
-                <th className="py-2.5 px-3">Visit / Dwell</th>
-                <th className="py-2.5 px-3">🎨 Design</th>
-                <th className="py-2.5 px-3">Buttons (Live/Dead)</th>
-                <th className="py-2.5 px-3">Size</th>
-                <th className="py-2.5 px-3">Access &amp; Manage</th>
+                <th className="py-2.5 px-3">アクセス頻度 ＆ 実測ログ</th>
+                <th className="py-2.5 px-3">稼働・無駄診断 (Audit)</th>
+                <th className="py-2.5 px-3">🎨 洗練度</th>
+                <th className="py-2.5 px-3">機能 / 容量</th>
+                <th className="py-2.5 px-3">操作</th>
               </tr>
             </thead>
             <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
               {visibleApps.map((a, idx) => {
                 const effectiveUrl = customUrls[a.id] ?? a.url;
                 const isEditing = editingUrlId === a.id;
+                const t = a.telemetry;
+
+                const statusBadge =
+                  t.wasteStatus === 'active'
+                    ? {
+                        label: '🟢 稼働中',
+                        bg: 'rgba(111, 176, 135, 0.16)',
+                        border: 'var(--zelda-zonai)',
+                        color: 'var(--zelda-zonai)',
+                      }
+                    : t.wasteStatus === 'underused'
+                    ? {
+                        label: '🟡 低頻度 (要確認)',
+                        bg: 'rgba(217, 168, 78, 0.18)',
+                        border: 'var(--zelda-gold)',
+                        color: 'var(--zelda-gold)',
+                      }
+                    : {
+                        label: '🔴 無駄・死蔵',
+                        bg: 'rgba(239, 68, 68, 0.20)',
+                        border: 'var(--f1-soft)',
+                        color: 'var(--f1-soft)',
+                      };
+
                 return (
-                  <tr key={a.id} className={a.muted ? 'gray-done' : 'hover:bg-[var(--bg-card2)]'} style={{ background: 'var(--bg-card)' }}>
+                  <tr
+                    key={a.id}
+                    className={a.muted ? 'gray-done' : 'hover:bg-[var(--bg-card2)]'}
+                    style={{ background: 'var(--bg-card)' }}
+                  >
                     <td className="py-2.5 px-3 font-black whitespace-nowrap">
                       {isEditing ? (
                         <input
@@ -528,7 +1189,10 @@ export default function HomeTab({
                       ) : a.internalTab ? (
                         <button
                           type="button"
-                          onClick={() => onNavigate(a.internalTab!)}
+                          onClick={() => {
+                            recordAppClick(a.id);
+                            onNavigate(a.internalTab!);
+                          }}
                           className="hover:underline text-left font-black flex items-center gap-1.5"
                         >
                           <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>#{idx + 1}</span>
@@ -565,33 +1229,72 @@ export default function HomeTab({
                         </button>
                       )}
                     </td>
-                    <td className="py-2.5 px-3 font-black tabular-nums" style={{ color: 'var(--zelda-gold)' }}>
-                      {a.score}
-                    </td>
+
                     <td className="py-2.5 px-3 whitespace-nowrap">
-                      <div>{a.visit}</div>
-                      {a.lifelogView && lifelogStats[a.lifelogView] ? (
-                        <div className="text-[10px]" style={{ color: 'var(--zelda-cyan)' }}>
-                          閲覧{lifelogStats[a.lifelogView].visits || 0} / 更新{lifelogStats[a.lifelogView].updates || 0}
-                          {lifelogStats[a.lifelogView].last_updated_at ? ` (${lifelogStats[a.lifelogView].last_updated_at!.slice(5, 16)})` : ''}
-                        </div>
-                      ) : appAccessLogs[a.id] ? (
-                        <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
-                          履歴 {appAccessLogs[a.id].count}回 ({appAccessLogs[a.id].lastAt})
-                        </div>
-                      ) : null}
+                      <span
+                        className="px-2 py-0.5 rounded text-[10px] font-extrabold border"
+                        style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)', color: 'var(--text-sub)' }}
+                      >
+                        {a.suiteLabel}
+                      </span>
                     </td>
+
+                    <td className="py-2.5 px-3 font-black tabular-nums text-sm" style={{ color: 'var(--zelda-gold)' }}>
+                      {t.dynamicScore}
+                    </td>
+
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <div className="font-bold">{a.visit}</div>
+                      {t.liveVisits > 0 || t.liveUpdates > 0 ? (
+                        <div className="text-[10px] font-extrabold" style={{ color: 'var(--zelda-cyan)' }}>
+                          実測アクセス {t.liveVisits}回
+                          {t.liveUpdates > 0 ? ` / 更新 ${t.liveUpdates}回` : ''}
+                          {t.dwellMin > 0 ? ` (${t.dwellMin}分)` : ''}
+                          {t.lastAccessStr ? ` · 最終 ${t.lastAccessStr}` : ''}
+                        </div>
+                      ) : (
+                        <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                          実測ログ: 未記録（クリックまたは訪問で自動計測）
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <div className="flex flex-col gap-0.5">
+                        <span
+                          className="inline-block w-fit px-2 py-0.5 rounded border text-[10px] font-black"
+                          style={{
+                            background: statusBadge.bg,
+                            borderColor: statusBadge.border,
+                            color: statusBadge.color,
+                          }}
+                        >
+                          {statusBadge.label}
+                        </span>
+                        <span className="text-[10px]" style={{ color: 'var(--text-muted)' }}>
+                          {a.wasteNote}
+                        </span>
+                      </div>
+                    </td>
+
                     <td className="py-2.5 px-3 font-bold tabular-nums" style={{ color: 'var(--zelda-cyan)' }}>
                       {a.design}
                     </td>
-                    <td className="py-2.5 px-3 whitespace-nowrap tabular-nums">{a.btnLabel}</td>
-                    <td className="py-2.5 px-3 font-bold whitespace-nowrap tabular-nums">{a.sizeLabel}</td>
+
+                    <td className="py-2.5 px-3 whitespace-nowrap tabular-nums">
+                      <div>{a.btnLabel}</div>
+                      <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>{a.sizeLabel}</div>
+                    </td>
+
                     <td className="py-2.5 px-3 whitespace-nowrap">
                       <div className="flex items-center gap-1.5">
                         {a.internalTab ? (
                           <button
                             type="button"
-                            onClick={() => onNavigate(a.internalTab!)}
+                            onClick={() => {
+                              recordAppClick(a.id);
+                              onNavigate(a.internalTab!);
+                            }}
                             className="px-2.5 py-1 rounded border font-bold"
                             style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
                           >
@@ -640,7 +1343,7 @@ export default function HomeTab({
                               JSON.stringify(next.filter((x) => x.muted).map((x) => x.id))
                             );
                           }}
-                          title="Mute / Dormant"
+                          title="休眠・無駄候補としてマーク / 解除"
                           className="px-2 py-1 rounded border"
                           style={{ borderColor: 'var(--border)' }}
                         >
