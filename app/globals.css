@@ -1,37 +1,67 @@
 @import "tailwindcss";
 
 :root {
-  --bg: #f8fafc;
-  --bg-card: #ffffff;
-  --bg-card2: #f1f5f9;
-  --border: #e2e8f0;
-  --text: #0f172a;
-  --text-sub: #64748b;
-  --text-muted: #94a3b8;
-  --accent: #6366f1;
-  --accent-hover: #4f46e5;
+  /* Antique Kraft Parchment (羊皮紙ライトモード) */
+  --bg: #d9ceb6;
+  --bg-card: #e6dcc6;
+  --bg-card2: #cfc2a6;
+  --border: #b8a88a;
+  --text: #2e261d;
+  --text-sub: #5f5344;
+  --text-muted: #756756;
+  --accent: #a8711c;
+  --accent-hover: #8c5c12;
+  --zelda-gold: #a8711c;
+  --zelda-cyan: #367385;
+  --zelda-zonai: #3f7d58;
+  --f1-soft: #b85249;
+  --f1-purple: #7e22ce;
+  --car-color: #64748b;
+  color-scheme: light;
 }
 
 .dark {
-  --bg: #0f172a;
-  --bg-card: #1e293b;
-  --bg-card2: #0f172a;
-  --border: #334155;
-  --text: #f1f5f9;
-  --text-sub: #94a3b8;
-  --text-muted: #64748b;
-  --accent: #818cf8;
-  --accent-hover: #6366f1;
+  /* Warm Dark Mode (添付画像ベース: #2a2520 / #342e28 / #d9a84e) */
+  --bg: #2a2520;
+  --bg-card: #342e28;
+  --bg-card2: #3f3831;
+  --border: #52493f;
+  --text: #e4dac6;
+  --text-sub: #c9bea9;
+  --text-muted: #aba08e;
+  --accent: #d9a84e;
+  --accent-hover: #c5933b;
+  --zelda-gold: #d9a84e;
+  --zelda-cyan: #6aaec0;
+  --zelda-zonai: #6fb087;
+  --f1-soft: #ef4444;
+  --f1-purple: #c084fc;
+  --car-color: #8b959e;
+  color-scheme: dark;
 }
 
 body {
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+  font-family: "Hiragino Maru Gothic ProN", "Hiragino Sans", var(--font-geist-sans), Arial, sans-serif;
   transition: background 0.2s, color 0.2s;
 }
 
 /* Scrollbar */
-::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 9999px; }
+
+.gray-done {
+  opacity: 0.35;
+  filter: grayscale(0.92);
+}
+
+@keyframes pulseCar {
+  0%, 100% { r: 6; filter: drop-shadow(0 0 6px #cbd5e1); }
+  50% { r: 8; filter: drop-shadow(0 0 11px #fff); }
+}
+
+.car-dot-you {
+  animation: pulseCar 1.6s infinite;
+}
