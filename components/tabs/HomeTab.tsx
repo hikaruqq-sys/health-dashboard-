@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { loadLinkUrls, saveLinkUrl } from '@/data/links';
 import type { BodyMetric, DailyNutrition } from '@/types';
@@ -11,7 +11,7 @@ interface CalInputItem {
   icon: string;
   label: string;
   targetApp: string;
-  onTime?: boolean | null;
+  kvKey: string;
   done: boolean;
 }
 
@@ -36,14 +36,14 @@ interface AppItem {
 const TODAY = 23; // 2026-11-23
 
 const INITIAL_CAL_ITEMS: CalInputItem[] = [
-  { id: 'c1', day: 14, icon: '🏢', label: 'Q2 IR', targetApp: 'Money & Assets', done: true, onTime: true },
-  { id: 'q1', day: 21, icon: '🏢', label: 'Q3 IR', targetApp: 'Money & Assets', done: false, onTime: null },
-  { id: 'q2', day: 22, icon: '📈', label: 'Econ 11', targetApp: 'Money & Assets', done: true, onTime: true },
-  { id: 'q3', day: 23, icon: '🍎', label: 'Shopping CSV', targetApp: 'Shopping & Items', done: false, onTime: null },
-  { id: 'q4', day: 25, icon: '🔥', label: 'Habits CSV', targetApp: 'Life Dashboard', done: false, onTime: null },
-  { id: 'q5', day: 28, icon: '💰', label: 'NISA Assets', targetApp: 'Money & Assets', done: false, onTime: null },
-  { id: 'q6', day: 29, icon: '💳', label: 'MF Budget', targetApp: 'Money & Assets', done: false, onTime: null },
-  { id: 'q7', day: 30, icon: '📚', label: 'Books CSV', targetApp: 'Life Dashboard', done: false, onTime: null },
+  { id: 'c1', day: 14, icon: '🏢', label: 'Q2 IR', targetApp: 'Money & Assets', kvKey: 'corp_q2', done: true },
+  { id: 'q1', day: 21, icon: '🏢', label: 'Q3 IR', targetApp: 'Money & Assets', kvKey: 'corp_q3', done: false },
+  { id: 'q2', day: 22, icon: '📈', label: 'Econ 11', targetApp: 'Money & Assets', kvKey: 'econ_nov', done: true },
+  { id: 'q3', day: 23, icon: '🍎', label: 'Shopping CSV', targetApp: 'Shopping & Items', kvKey: 'kaimono_w4', done: false },
+  { id: 'q4', day: 25, icon: '🔥', label: 'Habits CSV', targetApp: 'Life Dashboard', kvKey: 'streaks_w4', done: false },
+  { id: 'q5', day: 28, icon: '💰', label: 'NISA Assets', targetApp: 'Money & Assets', kvKey: 'asset_nov', done: false },
+  { id: 'q6', day: 29, icon: '💳', label: 'MF Budget', targetApp: 'Money & Assets', kvKey: 'budget_nov', done: false },
+  { id: 'q7', day: 30, icon: '📚', label: 'Books CSV', targetApp: 'Life Dashboard', kvKey: 'books_nov', done: false },
 ];
 
 const INITIAL_APPS: AppItem[] = [
@@ -76,27 +76,27 @@ export default function HomeTab({
   onNavigate: (tab: string) => void;
 }) {
   const [calItems, setCalItems] = useState<CalInputItem[]>(INITIAL_CAL_ITEMS);
-  const [standMsg, setStandMsg] = useState<string>('期日内完了で順位UP!');
   const [apps, setApps] = useState<AppItem[]>(INITIAL_APPS);
   const [deletedIds, setDeletedIds] = useState<string[]>([]);
   const [tasks, setTasks] = useState<string[]>(INITIAL_TASKS);
   const [ideas, setIdeas] = useState<string[]>(INITIAL_IDEAS);
   const [taskIn, setTaskIn] = useState('');
   const [ideaIn, setIdeaIn] = useState('');
-  const [csvTarget, setCsvTarget] = useState('q3');
   const [searchQuery, setSearchQuery] = useState('');
   const [editingUrlId, setEditingUrlId] = useState<string | null>(null);
   const [customUrls, setCustomUrls] = useState<Record<string, string>>({});
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const activeUploadIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     try {
       setCustomUrls(loadLinkUrls());
       const savedDone = localStorage.getItem('agy_home_done_v5');
       if (savedDone) {
-        const doneMap = JSON.parse(savedDone) as Record<string, { done: boolean; onTime?: boolean | null }>;
+        const doneMap = JSON.parse(savedDone) as Record<string, { done: boolean }>;
         setCalItems((prev) =>
-          prev.map((item) => (doneMap[item.id] ? { ...item, done: doneMap[item.id].done, onTime: doneMap[item.id].onTime } : item))
+          prev.map((item) => (doneMap[item.id] ? { ...item, done: doneMap[item.id].done } : item))
         );
       }
       const savedDel = localStorage.getItem('agy_home_del_v5');
@@ -120,56 +120,12 @@ export default function HomeTab({
     setTimeout(() => setToastMsg((cur) => (cur === msg ? null : cur)), 3200);
   };
 
-  const { pts, overdueItems, dueTodayItems, rank, drivers, doneCount } = useMemo(() => {
-    let score = 320;
-    const overdueList: CalInputItem[] = [];
-    const todayList: CalInputItem[] = [];
-    let dCount = 0;
-
-    calItems.forEach((c) => {
-      if (c.done) {
-        dCount++;
-        score += c.onTime ? 25 : 8;
-      } else if (c.day < TODAY) {
-        overdueList.push(c);
-        score -= (TODAY - c.day) * 10;
-      } else if (c.day === TODAY) {
-        todayList.push(c);
-      }
-    });
-    score += deletedIds.length * 8;
-
-    const list = [
-      { name: '🚙FORESTER', pts: score, you: true },
-      { name: '🇳🇱VER', pts: 393, you: false },
-      { name: '🇬🇧NOR', pts: 374, you: false },
-      { name: '🇲🇨LEC', pts: 356, you: false },
-      { name: '🇦🇺PIA', pts: 318, you: false },
-      { name: '🇯🇵TSU', pts: 145, you: false },
-    ].sort((a, b) => b.pts - a.pts);
-
-    return {
-      pts: score,
-      overdueItems: overdueList,
-      dueTodayItems: todayList,
-      rank: list.findIndex((d) => d.you) + 1,
-      drivers: list,
-      doneCount: dCount,
-    };
-  }, [calItems, deletedIds]);
-
   const toggleQuest = (id: string) => {
     setCalItems((prev) => {
-      const next = prev.map((c) => {
-        if (c.id !== id) return c;
-        const nextDone = !c.done;
-        const onTime = nextDone ? c.day >= TODAY : null;
-        setStandMsg(nextDone ? (onTime ? '🟢 +25pt 順位UP!' : '⚠️ 遅延回収 +8pt') : '↩ 未実施');
-        return { ...c, done: nextDone, onTime };
-      });
-      const map: Record<string, { done: boolean; onTime?: boolean | null }> = {};
+      const next = prev.map((c) => (c.id === id ? { ...c, done: !c.done } : c));
+      const map: Record<string, { done: boolean }> = {};
       next.forEach((x) => {
-        map[x.id] = { done: x.done, onTime: x.onTime };
+        map[x.id] = { done: x.done };
       });
       try {
         localStorage.setItem('agy_home_done_v5', JSON.stringify(map));
@@ -180,13 +136,13 @@ export default function HomeTab({
     });
   };
 
-  const handleIngest = async (content: string, filename: string) => {
-    const targetItem = calItems.find((c) => c.id === csvTarget);
-    if (supabase) {
+  const handleIngestFile = async (questId: string, content: string, filename: string) => {
+    const targetItem = calItems.find((c) => c.id === questId);
+    if (supabase && targetItem) {
       await supabase
         .from('lifeplan_kv')
         .upsert({
-          key: `hub_ingest_${csvTarget}`,
+          key: `hub_ingest_${targetItem.kvKey}`,
           data: { filename, rows: content.split(/\r?\n/).filter(Boolean).length, updatedAt: new Date().toISOString() },
           updated_at: new Date().toISOString(),
         })
@@ -195,8 +151,23 @@ export default function HomeTab({
     if (targetItem && !targetItem.done) {
       toggleQuest(targetItem.id);
     }
-    notify(`🟣 ${filename} をSupabase経由で別アプリへ反映しました！`);
+    notify(`✓ ${filename} → ${targetItem?.targetApp ?? 'App'} へ取込完了`);
   };
+
+  // CSVボタン表示用：期限到来(遅れ＆今日)を目立たせ、未来(未到来)や完了はグレー化
+  const sortedCsvButtons = useMemo(() => {
+    return [...calItems].sort((a, b) => {
+      const aScore = a.done ? 3 : a.day < TODAY ? 0 : a.day === TODAY ? 1 : 2;
+      const bScore = b.done ? 3 : b.day < TODAY ? 0 : b.day === TODAY ? 1 : 2;
+      if (aScore !== bScore) return aScore - bScore;
+      return a.day - b.day;
+    });
+  }, [calItems]);
+
+  const overdueCount = calItems.filter((c) => !c.done && c.day < TODAY).length;
+  const dueTodayCount = calItems.filter((c) => !c.done && c.day === TODAY).length;
+  const doneCount = calItems.filter((c) => c.done).length;
+  const progressPct = Math.round((doneCount / calItems.length) * 100);
 
   const visibleApps = useMemo(() => {
     const q = searchQuery.trim().toLowerCase();
@@ -210,258 +181,261 @@ export default function HomeTab({
     .filter((a) => deletedIds.includes(a.id) || a.muted)
     .reduce((s, a) => s + a.mb, 0);
 
-  const missingAlerts = [...overdueItems, ...dueTodayItems];
-  const progressPct = Math.round((doneCount / calItems.length) * 100);
-
   return (
-    <div className="space-y-2.5 text-xs" style={{ color: 'var(--text)' }}>
+    <div className="space-y-4 text-xs" style={{ color: 'var(--text)' }}>
       {toastMsg && (
         <div
           className="fixed bottom-4 right-4 z-50 px-3.5 py-2 rounded-lg border-2 font-bold shadow-xl"
-          style={{ background: 'var(--bg-card)', borderColor: 'var(--f1-purple)', color: 'var(--text)' }}
+          style={{ background: 'var(--bg-card)', borderColor: 'var(--zelda-gold)', color: 'var(--text)' }}
         >
           {toastMsg}
         </div>
       )}
 
-      {/* ROW 1: TOP BAR (FORESTER + RANK + MISSING ITEMS LIST + CSV INGEST) */}
+      {/* Hidden shared file input for one-click CSV buttons */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,.tsv,.json,.txt"
+        hidden
+        onChange={async (e) => {
+          const file = e.target.files?.[0];
+          const qId = activeUploadIdRef.current;
+          if (file && qId) {
+            await handleIngestFile(qId, await file.text(), file.name);
+            e.target.value = '';
+          }
+        }}
+      />
+
+      {/* ROW 1: 期限別 CSV/データ取込ボタンバー (期限到来=強調 / 遅れ=赤太枠 / 未来・完了=グレー) */}
       <div
-        className="flex flex-col gap-2 px-3 py-2 rounded-lg border shadow-sm"
-        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)', borderLeft: '4px solid var(--car-color)' }}
+        className="p-3 rounded-lg border space-y-2.5 shadow-sm"
+        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-black text-xs flex items-center gap-1.5">
-              <span className="inline-block w-2.5 h-2.5 rounded-full border border-white/70" style={{ background: '#7c858e' }} />
-              🚙 FORESTER
-            </span>
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="text-sm font-black">📥 データ取込 &amp; 漏れチェック</span>
+            {overdueCount > 0 && (
+              <span
+                className="px-2 py-0.5 rounded font-black text-[11px] border"
+                style={{ background: 'rgba(239,68,68,0.2)', borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}
+              >
+                🚨 期限遅れ {overdueCount}件
+              </span>
+            )}
+            {dueTodayCount > 0 && (
+              <span
+                className="px-2 py-0.5 rounded font-black text-[11px] border"
+                style={{ background: 'rgba(217,168,78,0.2)', borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
+              >
+                ⚡ 今日が期限 {dueTodayCount}件
+              </span>
+            )}
             <span
-              className="px-2 py-0.5 rounded font-black text-[11px] border"
-              style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
-            >
-              P{rank} · {pts}pt
-            </span>
-            <span
-              className="px-2 py-0.5 rounded font-black text-[11px] border"
+              className="px-2 py-0.5 rounded font-bold text-[11px] border"
               style={{ borderColor: 'var(--zelda-zonai)', color: 'var(--zelda-zonai)' }}
             >
-              進捗 {doneCount}/{calItems.length} ({progressPct}%)
+              ✓ 完了 {doneCount}/{calItems.length} ({progressPct}%)
             </span>
-            {metrics.length > 0 && metrics[metrics.length - 1].weight != null && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold border" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-                ⚖️ {metrics[metrics.length - 1].weight?.toFixed(1)}kg
-              </span>
-            )}
-            {nutrition.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold border" style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
-                🍽️ {Math.round(nutrition[nutrition.length - 1].totalCalories)}kcal
-              </span>
-            )}
           </div>
 
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleIngest('quick_sync=1', 'quick.csv');
-            }}
-            className="flex items-center gap-1 flex-wrap"
-          >
-            <select
-              value={csvTarget}
-              onChange={(e) => setCsvTarget(e.target.value)}
-              aria-label="Target App"
-              className="px-1.5 py-0.5 rounded text-[10.5px] font-bold border"
-              style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
-            >
-              <option value="q3">🍎 Shopping CSV → Shopping & Items</option>
-              <option value="q4">🔥 Habits CSV → Life Dashboard</option>
-              <option value="q5">💰 NISA → Money & Assets</option>
-              <option value="q6">💳 MF Budget → Money & Assets</option>
-              <option value="q1">🏢 Q3 IR → Money & Assets</option>
-            </select>
-            <label
-              className="px-2 py-0.5 rounded text-[10.5px] font-bold border cursor-pointer"
-              style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
-            >
-              📂CSV
-              <input
-                type="file"
-                accept=".csv,.tsv,.json,.txt"
-                hidden
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    await handleIngest(await file.text(), file.name);
-                    e.target.value = '';
-                  }
-                }}
-              />
-            </label>
-            <button
-              type="submit"
-              className="px-2 py-0.5 rounded text-[10.5px] font-black border"
-              style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
-            >
-              ⚡取込
-            </button>
-          </form>
+          <div className="flex items-center gap-2 text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
+            {metrics.length > 0 && metrics[metrics.length - 1].weight != null && (
+              <span>⚖️ {metrics[metrics.length - 1].weight?.toFixed(1)}kg</span>
+            )}
+            {nutrition.length > 0 && (
+              <span>🍽️ {Math.round(nutrition[nutrition.length - 1].totalCalories)}kcal</span>
+            )}
+          </div>
         </div>
 
-        {/* MISSING / OVERDUE INPUTS ICON LIST AT TOP */}
-        <div className="flex items-center gap-1.5 flex-wrap pt-1 border-t" style={{ borderColor: 'var(--border)' }}>
-          <span className="text-[10px] font-black" style={{ color: missingAlerts.length > 0 ? 'var(--f1-soft)' : 'var(--zelda-zonai)' }}>
-            {missingAlerts.length > 0 ? '🚨 漏れ・要対応:' : '✨ 漏れなし:'}
-          </span>
-          {missingAlerts.length === 0 ? (
-            <span className="text-[10px] font-bold" style={{ color: 'var(--zelda-zonai)' }}>
-              すべて完了済み（遅延ゼロ）
-            </span>
-          ) : (
-            missingAlerts.map((item) => {
-              const isLate = item.day < TODAY;
-              return (
+        {/* All CSV / Input Action Buttons (Overdue = Red Highlight, Today = Gold Highlight, Future/Done = Gray) */}
+        <div className="flex flex-wrap items-center gap-2">
+          {sortedCsvButtons.map((item) => {
+            const isOverdue = !item.done && item.day < TODAY;
+            const isToday = !item.done && item.day === TODAY;
+            const isFutureOrDone = item.done || item.day > TODAY;
+
+            return (
+              <div
+                key={item.id}
+                className={`flex items-center rounded-lg border-2 overflow-hidden transition ${
+                  isFutureOrDone ? 'gray-done' : isOverdue ? 'shadow-md' : ''
+                }`}
+                style={{
+                  background: isOverdue
+                    ? 'rgba(239,68,68,0.18)'
+                    : isToday
+                    ? 'rgba(217,168,78,0.2)'
+                    : 'var(--bg-card2)',
+                  borderColor: isOverdue
+                    ? 'var(--f1-soft)'
+                    : isToday
+                    ? 'var(--zelda-gold)'
+                    : 'var(--border)',
+                }}
+              >
                 <button
-                  key={item.id}
                   type="button"
-                  onClick={() => toggleQuest(item.id)}
-                  title="クリックで完了グレー化"
-                  className="px-2 py-0.5 rounded text-[10px] font-extrabold border flex items-center gap-1 transition hover:opacity-80"
-                  style={{
-                    background: isLate ? 'rgba(239,68,68,0.22)' : 'rgba(111,176,135,0.2)',
-                    borderColor: isLate ? 'var(--f1-soft)' : 'var(--zelda-zonai)',
-                    color: 'var(--text)',
+                  onClick={() => {
+                    activeUploadIdRef.current = item.id;
+                    fileInputRef.current?.click();
                   }}
+                  title={`${item.targetApp} へCSVを取り込む`}
+                  className="px-2.5 py-1.5 flex items-center gap-1.5 font-extrabold text-xs hover:opacity-80"
                 >
                   <span>{item.icon}</span>
                   <span>{item.label}</span>
-                  <span style={{ color: isLate ? 'var(--f1-soft)' : 'var(--zelda-zonai)' }}>
-                    {isLate ? `11/${item.day} (-${(TODAY - item.day) * 10}pt)` : '今日 (+25pt)'}
+                  <span
+                    className="text-[10px] font-bold"
+                    style={{
+                      color: isOverdue ? 'var(--f1-soft)' : isToday ? 'var(--zelda-gold)' : 'var(--text-muted)',
+                    }}
+                  >
+                    {item.done
+                      ? '✓済'
+                      : isOverdue
+                      ? `🚨11/${item.day}遅`
+                      : isToday
+                      ? '⚡今日'
+                      : `11/${item.day}`}
                   </span>
                 </button>
-              );
-            })
-          )}
+                <button
+                  type="button"
+                  onClick={() => toggleQuest(item.id)}
+                  title={item.done ? '未完了に戻す' : '手動で完了(グレー)にする'}
+                  className="px-2 py-1.5 border-l text-[11px] font-black hover:bg-black/15"
+                  style={{ borderColor: 'var(--border)' }}
+                >
+                  {item.done ? '↩' : '✓'}
+                </button>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* ROW 2: CALENDAR CENTER (9 cols) + CLEAN STANDINGS (3 cols) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-2.5">
-        {/* LEFT: November Calendar */}
-        <div className="lg:col-span-9 p-2.5 rounded-lg border space-y-1.5" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-          <div className="flex items-center justify-between text-[11px] font-black">
-            <span>📅 2026年11月 インプットカレンダー</span>
-            <span className="text-[10px] font-bold" style={{ color: 'var(--text-muted)' }}>
-              🚨遅れ(減点) ｜ 🟢期日内(+25pt) ｜ ⚪完了グレー
-            </span>
-          </div>
-          <div className="grid grid-cols-7 gap-1 text-center text-[9.5px] font-bold" style={{ color: 'var(--text-muted)' }}>
-            <span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span><span>日</span>
-          </div>
-          <div className="grid grid-cols-7 gap-1">
-            {Array.from({ length: 6 }).map((_, idx) => (
-              <div key={`b-${idx}`} className="rounded border min-h-[42px] opacity-15" style={{ borderStyle: 'dashed', borderColor: 'var(--border)' }} />
-            ))}
-            {Array.from({ length: 30 }).map((_, idx) => {
-              const d = idx + 1;
-              const items = calItems.filter((c) => c.day === d);
-              const hasOverdue = items.some((c) => !c.done && d < TODAY);
-              const allDone = items.length > 0 && items.every((c) => c.done);
-              return (
-                <div
-                  key={d}
-                  className={`p-1 rounded border min-h-[44px] flex flex-col justify-between ${allDone ? 'gray-done' : ''}`}
-                  style={{
-                    background: 'var(--bg-card2)',
-                    borderColor:
-                      d === TODAY
-                        ? 'var(--zelda-gold)'
-                        : hasOverdue
-                        ? 'var(--f1-soft)'
-                        : 'var(--border)',
-                  }}
-                >
-                  <div className="flex justify-between text-[9px] font-bold" style={{ color: d === TODAY ? 'var(--zelda-gold)' : 'var(--text-muted)' }}>
-                    <span>
-                      {d}
-                      {d === TODAY ? '今日' : ''}
-                    </span>
-                    <span>{allDone ? '✓' : hasOverdue ? '🚨' : ''}</span>
-                  </div>
-                  <div className="space-y-0.5">
-                    {items.map((it) => (
-                      <button
-                        key={it.id}
-                        type="button"
-                        onClick={() => toggleQuest(it.id)}
-                        className={`w-full text-left text-[8.5px] font-extrabold px-1 rounded truncate ${it.done ? 'line-through opacity-50' : ''}`}
-                        style={{
-                          background: it.done
-                            ? 'rgba(0,0,0,0.2)'
-                            : it.day < TODAY
-                            ? 'rgba(239,68,68,0.32)'
-                            : 'rgba(111,176,135,0.24)',
-                          borderLeft: `2px solid ${it.done ? 'var(--border)' : it.day < TODAY ? 'var(--f1-soft)' : 'var(--zelda-zonai)'}`,
-                        }}
-                      >
-                        {it.done ? '✓' : '●'}
-                        {it.icon}
-                        {it.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
+      {/* ROW 2: FULL-WIDTH LARGE NOVEMBER CALENDAR (12 cols) */}
+      <div
+        className="p-3.5 rounded-lg border space-y-2.5 shadow-sm"
+        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <h2 className="text-base font-black">📅 2026年11月 インプットカレンダー</h2>
+          <div className="flex items-center gap-3 text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
+            <span>🚨 赤枠＝期限遅れ</span>
+            <span>⚡ 金枠＝今日期限</span>
+            <span>⚪ グレー＝完了・期限前</span>
           </div>
         </div>
 
-        {/* RIGHT: Clean Standings & Simple Progress */}
-        <div
-          className="lg:col-span-3 p-2.5 rounded-lg border flex flex-col justify-between gap-2"
-          style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
-        >
-          <div className="space-y-2">
-            <div className="flex justify-between items-center text-[11px] font-black">
-              <span style={{ color: 'var(--zelda-gold)' }}>🏆 順位表</span>
-              <span className="text-[10px]" style={{ color: 'var(--zelda-zonai)' }}>{standMsg}</span>
-            </div>
-            <div className="space-y-1 text-[10px] font-extrabold">
-              {drivers.map((d, i) => (
+        <div className="grid grid-cols-7 gap-2 text-center text-xs font-extrabold" style={{ color: 'var(--text-muted)' }}>
+          <span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span><span>日</span>
+        </div>
+
+        <div className="grid grid-cols-7 gap-2">
+          {Array.from({ length: 6 }).map((_, idx) => (
+            <div
+              key={`b-${idx}`}
+              className="rounded-lg border min-h-[76px] opacity-15"
+              style={{ borderStyle: 'dashed', borderColor: 'var(--border)' }}
+            />
+          ))}
+          {Array.from({ length: 30 }).map((_, idx) => {
+            const d = idx + 1;
+            const items = calItems.filter((c) => c.day === d);
+            const hasOverdue = items.some((c) => !c.done && d < TODAY);
+            const hasTodayDue = items.some((c) => !c.done && d === TODAY);
+            const allDone = items.length > 0 && items.every((c) => c.done);
+            const isFutureOnly = items.length > 0 && d > TODAY && !allDone;
+
+            return (
+              <div
+                key={d}
+                className={`p-2 rounded-lg border-2 min-h-[76px] flex flex-col justify-between transition ${
+                  allDone ? 'gray-done' : isFutureOnly ? 'opacity-60' : ''
+                }`}
+                style={{
+                  background: hasOverdue
+                    ? 'rgba(239,68,68,0.12)'
+                    : hasTodayDue
+                    ? 'rgba(217,168,78,0.12)'
+                    : 'var(--bg-card2)',
+                  borderColor:
+                    d === TODAY
+                      ? 'var(--zelda-gold)'
+                      : hasOverdue
+                      ? 'var(--f1-soft)'
+                      : 'var(--border)',
+                }}
+              >
                 <div
-                  key={d.name}
-                  className="px-2 py-1.5 rounded border flex justify-between items-center"
-                  style={{
-                    background: d.you ? 'rgba(139,149,158,0.28)' : 'var(--bg-card2)',
-                    borderColor: d.you ? '#cbd5e1' : 'var(--border)',
-                  }}
+                  className="flex justify-between items-center text-[11px] font-black"
+                  style={{ color: d === TODAY ? 'var(--zelda-gold)' : hasOverdue ? 'var(--f1-soft)' : 'var(--text-muted)' }}
                 >
                   <span>
-                    P{i + 1} {d.name}
+                    11/{d}
+                    {d === TODAY ? ' (今日)' : ''}
                   </span>
-                  <span>{d.pts} pt</span>
+                  <span>{allDone ? '✓' : hasOverdue ? '🚨' : hasTodayDue ? '⚡' : ''}</span>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="p-2 rounded border space-y-1" style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}>
-            <div className="flex justify-between text-[10px] font-bold">
-              <span>今月の完了率</span>
-              <span style={{ color: 'var(--zelda-gold)' }}>{progressPct}%</span>
-            </div>
-            <div className="w-full h-2 bg-black/40 rounded-full overflow-hidden">
-              <div className="h-full transition-all" style={{ width: `${progressPct}%`, background: 'var(--zelda-zonai)' }} />
-            </div>
-          </div>
+                <div className="space-y-1 mt-1">
+                  {items.map((it) => (
+                    <button
+                      key={it.id}
+                      type="button"
+                      onClick={() => toggleQuest(it.id)}
+                      className={`w-full text-left text-[11px] font-extrabold px-1.5 py-1 rounded truncate ${
+                        it.done ? 'line-through opacity-50' : ''
+                      }`}
+                      style={{
+                        background: it.done
+                          ? 'rgba(0,0,0,0.2)'
+                          : it.day < TODAY
+                          ? 'rgba(239,68,68,0.3)'
+                          : it.day === TODAY
+                          ? 'rgba(217,168,78,0.3)'
+                          : 'rgba(255,255,255,0.06)',
+                        borderLeft: `3px solid ${
+                          it.done
+                            ? 'var(--border)'
+                            : it.day < TODAY
+                            ? 'var(--f1-soft)'
+                            : it.day === TODAY
+                            ? 'var(--zelda-gold)'
+                            : 'var(--text-muted)'
+                        }`,
+                      }}
+                    >
+                      {it.done ? '✓ ' : ''}
+                      {it.icon} {it.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* ROW 3: ALL 14 ENGLISH APPS LAUNCHER & RANKING TABLE */}
-      <div className="p-2.5 rounded-lg border space-y-1.5" style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}>
-        <div className="flex flex-wrap items-center justify-between gap-2 text-[10.5px] font-black">
-          <span>🕹️ All 14 Apps Launcher & Ranking (Visit/Dwell · Design · Freshness · Security · Buttons · Size)</span>
-          <div className="flex items-center gap-1.5">
-            <span style={{ color: 'var(--zelda-gold)' }}>🧹 Reclaimable: {(savedMB / 1024).toFixed(2)}GB</span>
+      {/* ROW 3: ALL 14 WEB & LOCAL APPS (NO HEIGHT CAP — ALL VISIBLE AT ONCE, WIDER SPACING) */}
+      <div
+        className="p-3.5 rounded-lg border space-y-2.5 shadow-sm"
+        style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-sm font-black">🕹️ All 14 Apps Launcher &amp; Ranking</h2>
+            <span className="text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
+              全アプリ一覧（クリックで直接アクセス）
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-black" style={{ color: 'var(--zelda-gold)' }}>
+              🧹 Reclaimable: {(savedMB / 1024).toFixed(2)}GB
+            </span>
             {deletedIds.length > 0 && (
               <button
                 type="button"
@@ -469,10 +443,10 @@ export default function HomeTab({
                   setDeletedIds([]);
                   localStorage.setItem('agy_home_del_v5', '[]');
                 }}
-                className="px-1.5 py-0.5 rounded text-[9.5px] border"
+                className="px-2 py-1 rounded text-[11px] font-bold border"
                 style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
               >
-                ↩Restore
+                ↩ Restore
               </button>
             )}
             <input
@@ -480,23 +454,23 @@ export default function HomeTab({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="🔍 Search app..."
-              className="px-2 py-0.5 rounded border text-[10px]"
+              className="px-2.5 py-1 rounded border text-xs w-44"
               style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
             />
           </div>
         </div>
 
-        <div className="max-h-56 overflow-auto rounded border" style={{ borderColor: 'var(--border)' }}>
-          <table className="w-full text-left text-[10.5px] border-collapse">
-            <thead style={{ background: '#212823', color: '#e4dac6' }} className="sticky top-0 z-10">
+        <div className="overflow-x-auto rounded-lg border" style={{ borderColor: 'var(--border)' }}>
+          <table className="w-full text-left text-xs border-collapse">
+            <thead style={{ background: '#212823', color: '#e4dac6' }}>
               <tr>
-                <th className="p-1.5">App (Click to Open)</th>
-                <th className="p-1.5">Score</th>
-                <th className="p-1.5">Visit / Dwell</th>
-                <th className="p-1.5">🎨Design</th>
-                <th className="p-1.5">Buttons (Live/Dead)</th>
-                <th className="p-1.5">Size</th>
-                <th className="p-1.5">Actions</th>
+                <th className="py-2.5 px-3">App (Click to Open)</th>
+                <th className="py-2.5 px-3">Score</th>
+                <th className="py-2.5 px-3">Visit / Dwell</th>
+                <th className="py-2.5 px-3">🎨 Design</th>
+                <th className="py-2.5 px-3">Buttons (Live/Dead)</th>
+                <th className="py-2.5 px-3">Size</th>
+                <th className="py-2.5 px-3">Access &amp; Manage</th>
               </tr>
             </thead>
             <tbody className="divide-y" style={{ borderColor: 'var(--border)' }}>
@@ -504,8 +478,8 @@ export default function HomeTab({
                 const effectiveUrl = customUrls[a.id] ?? a.url;
                 const isEditing = editingUrlId === a.id;
                 return (
-                  <tr key={a.id} className={a.muted ? 'gray-done' : ''} style={{ background: 'var(--bg-card)' }}>
-                    <td className="p-1.5 font-black whitespace-nowrap">
+                  <tr key={a.id} className={a.muted ? 'gray-done' : 'hover:bg-[var(--bg-card2)]'} style={{ background: 'var(--bg-card)' }}>
+                    <td className="py-2.5 px-3 font-black whitespace-nowrap">
                       {isEditing ? (
                         <input
                           autoFocus
@@ -520,20 +494,25 @@ export default function HomeTab({
                           onKeyDown={(e) => {
                             if (e.key === 'Enter') e.currentTarget.blur();
                           }}
-                          className="px-1.5 py-0.5 rounded border text-[10px] w-48"
+                          className="px-2 py-1 rounded border text-xs w-56"
                           style={{ background: 'var(--bg-card2)', borderColor: 'var(--zelda-gold)' }}
                         />
                       ) : a.internalTab ? (
                         <button
                           type="button"
                           onClick={() => onNavigate(a.internalTab!)}
-                          className="hover:underline text-left font-black"
+                          className="hover:underline text-left font-black flex items-center gap-1.5"
                         >
-                          #{idx + 1} {a.icon} {a.name}
+                          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>#{idx + 1}</span>
+                          <span>{a.icon}</span>
+                          <span>{a.name}</span>
                         </button>
                       ) : effectiveUrl ? (
-                        <a href={effectiveUrl} target="_blank" rel="noopener noreferrer" className="hover:underline">
-                          #{idx + 1} {a.icon} {a.name} ↗
+                        <a href={effectiveUrl} target="_blank" rel="noopener noreferrer" className="hover:underline flex items-center gap-1.5">
+                          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>#{idx + 1}</span>
+                          <span>{a.icon}</span>
+                          <span>{a.name}</span>
+                          <span style={{ color: 'var(--zelda-gold)' }}>↗</span>
                         </a>
                       ) : (
                         <button
@@ -543,93 +522,98 @@ export default function HomeTab({
                             notify(`📋 Copied path: ${a.localPath}`);
                           }}
                           title={`Copy path: ${a.localPath}`}
-                          className="hover:underline text-left"
+                          className="hover:underline text-left flex items-center gap-1.5"
                         >
-                          #{idx + 1} {a.icon} {a.name} 📋
+                          <span className="text-[11px]" style={{ color: 'var(--text-muted)' }}>#{idx + 1}</span>
+                          <span>{a.icon}</span>
+                          <span>{a.name}</span>
+                          <span>📋</span>
                         </button>
                       )}
                     </td>
-                    <td className="p-1.5 font-black" style={{ color: 'var(--zelda-gold)' }}>
+                    <td className="py-2.5 px-3 font-black tabular-nums" style={{ color: 'var(--zelda-gold)' }}>
                       {a.score}
                     </td>
-                    <td className="p-1.5 whitespace-nowrap">{a.visit}</td>
-                    <td className="p-1.5 font-bold" style={{ color: 'var(--zelda-cyan)' }}>
+                    <td className="py-2.5 px-3 whitespace-nowrap">{a.visit}</td>
+                    <td className="py-2.5 px-3 font-bold tabular-nums" style={{ color: 'var(--zelda-cyan)' }}>
                       {a.design}
                     </td>
-                    <td className="p-1.5 whitespace-nowrap">{a.btnLabel}</td>
-                    <td className="p-1.5 font-bold whitespace-nowrap">{a.sizeLabel}</td>
-                    <td className="p-1.5 flex items-center gap-1 whitespace-nowrap">
-                      {a.internalTab ? (
+                    <td className="py-2.5 px-3 whitespace-nowrap tabular-nums">{a.btnLabel}</td>
+                    <td className="py-2.5 px-3 font-bold whitespace-nowrap tabular-nums">{a.sizeLabel}</td>
+                    <td className="py-2.5 px-3 whitespace-nowrap">
+                      <div className="flex items-center gap-1.5">
+                        {a.internalTab ? (
+                          <button
+                            type="button"
+                            onClick={() => onNavigate(a.internalTab!)}
+                            className="px-2.5 py-1 rounded border font-bold"
+                            style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
+                          >
+                            Open
+                          </button>
+                        ) : effectiveUrl ? (
+                          <a
+                            href={effectiveUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="px-2.5 py-1 rounded border font-bold"
+                            style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
+                          >
+                            Open ↗
+                          </a>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(a.localPath).catch(() => {});
+                              notify(`📋 Copied: ${a.localPath}`);
+                            }}
+                            className="px-2.5 py-1 rounded border font-bold"
+                            style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                          >
+                            Path
+                          </button>
+                        )}
                         <button
                           type="button"
-                          onClick={() => onNavigate(a.internalTab!)}
-                          className="px-1.5 py-0.5 rounded border font-bold"
-                          style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
+                          onClick={() => setEditingUrlId(a.id)}
+                          title="Edit App URL"
+                          className="px-2 py-1 rounded border"
+                          style={{ borderColor: 'var(--border)' }}
                         >
-                          Open
+                          ✎
                         </button>
-                      ) : effectiveUrl ? (
-                        <a
-                          href={effectiveUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="px-1.5 py-0.5 rounded border font-bold"
-                          style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
-                        >
-                          Open ↗
-                        </a>
-                      ) : (
                         <button
                           type="button"
                           onClick={() => {
-                            navigator.clipboard?.writeText(a.localPath).catch(() => {});
-                            notify(`📋 Copied: ${a.localPath}`);
+                            const next = apps.map((x) => (x.id === a.id ? { ...x, muted: !x.muted } : x));
+                            setApps(next);
+                            localStorage.setItem(
+                              'agy_home_muted_v5',
+                              JSON.stringify(next.filter((x) => x.muted).map((x) => x.id))
+                            );
                           }}
-                          className="px-1.5 py-0.5 rounded border font-bold"
-                          style={{ borderColor: 'var(--border)', color: 'var(--text-muted)' }}
+                          title="Mute / Dormant"
+                          className="px-2 py-1 rounded border"
+                          style={{ borderColor: 'var(--border)' }}
                         >
-                          Path
+                          {a.muted ? '↩' : '👁️'}
                         </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => setEditingUrlId(a.id)}
-                        title="Edit App URL"
-                        className="px-1 py-0.5 rounded border"
-                        style={{ borderColor: 'var(--border)' }}
-                      >
-                        ✎
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const next = apps.map((x) => (x.id === a.id ? { ...x, muted: !x.muted } : x));
-                          setApps(next);
-                          localStorage.setItem(
-                            'agy_home_muted_v5',
-                            JSON.stringify(next.filter((x) => x.muted).map((x) => x.id))
-                          );
-                        }}
-                        title="Mute / Dormant"
-                        className="px-1 py-0.5 rounded border"
-                        style={{ borderColor: 'var(--border)' }}
-                      >
-                        {a.muted ? '↩' : '👁️'}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const nextDel = [...deletedIds, a.id];
-                          setDeletedIds(nextDel);
-                          localStorage.setItem('agy_home_del_v5', JSON.stringify(nextDel));
-                          notify(`🔥 Removed ${a.name} from active launcher`);
-                        }}
-                        title="Delete from launcher"
-                        className="px-1 py-0.5 rounded border font-bold"
-                        style={{ borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}
-                      >
-                        🔥
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextDel = [...deletedIds, a.id];
+                            setDeletedIds(nextDel);
+                            localStorage.setItem('agy_home_del_v5', JSON.stringify(nextDel));
+                            notify(`🔥 Removed ${a.name} from active launcher`);
+                          }}
+                          title="Delete from launcher"
+                          className="px-2 py-1 rounded border font-bold"
+                          style={{ borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}
+                        >
+                          🔥
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -640,16 +624,16 @@ export default function HomeTab({
       </div>
 
       {/* ROW 4: NEXT TASKS & NEW APP IDEAS */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 text-[10px]">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-[11px]">
         <div
-          className="p-2 rounded-lg border flex items-center justify-between gap-1.5"
+          className="p-2.5 rounded-lg border flex items-center justify-between gap-2"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
-          <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap font-bold">
+          <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap font-bold">
             {tasks.map((t, i) => (
               <span
                 key={`${t}-${i}`}
-                className="px-1.5 py-0.5 rounded border flex items-center gap-1"
+                className="px-2 py-0.5 rounded border flex items-center gap-1"
                 style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
               >
                 <span>🛠️{t}</span>
@@ -682,12 +666,12 @@ export default function HomeTab({
               value={taskIn}
               onChange={(e) => setTaskIn(e.target.value)}
               placeholder="＋Next task"
-              className="w-24 px-1.5 py-0.5 rounded border"
+              className="w-28 px-2 py-0.5 rounded border"
               style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
             />
             <button
               type="submit"
-              className="px-1.5 py-0.5 rounded font-bold border"
+              className="px-2 py-0.5 rounded font-bold border"
               style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
             >
               ＋
@@ -696,14 +680,14 @@ export default function HomeTab({
         </div>
 
         <div
-          className="p-2 rounded-lg border flex items-center justify-between gap-1.5"
+          className="p-2.5 rounded-lg border flex items-center justify-between gap-2"
           style={{ background: 'var(--bg-card)', borderColor: 'var(--border)' }}
         >
-          <div className="flex items-center gap-1 overflow-x-auto whitespace-nowrap font-bold">
+          <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap font-bold">
             {ideas.map((idea, i) => (
               <span
                 key={`${idea}-${i}`}
-                className="px-1.5 py-0.5 rounded border flex items-center gap-1"
+                className="px-2 py-0.5 rounded border flex items-center gap-1"
                 style={{ background: 'var(--bg-card2)', borderColor: 'var(--zelda-cyan)' }}
               >
                 <span>{idea}</span>
@@ -736,12 +720,12 @@ export default function HomeTab({
               value={ideaIn}
               onChange={(e) => setIdeaIn(e.target.value)}
               placeholder="＋New app"
-              className="w-24 px-1.5 py-0.5 rounded border"
+              className="w-28 px-2 py-0.5 rounded border"
               style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
             />
             <button
               type="submit"
-              className="px-1.5 py-0.5 rounded font-bold border"
+              className="px-2 py-0.5 rounded font-bold border"
               style={{ borderColor: 'var(--zelda-cyan)', color: 'var(--zelda-cyan)' }}
             >
               ＋
