@@ -668,6 +668,14 @@ export default function HomeTab({
   const [pinnedFixId, setPinnedFixId] = useState<string | null>(null);
   const [pinnedIdeaId, setPinnedIdeaId] = useState<string | null>(null);
   const [subIdeaDrafts, setSubIdeaDrafts] = useState<Record<string, string>>({});
+  const [showIphoneModal, setShowIphoneModal] = useState(false);
+  const [iphoneTab, setIphoneTab] = useState<'books' | 'notes'>('books');
+  const [capturedBooks, setCapturedBooks] = useState<
+    { id: string; title: string; author: string; image_url: string; amazon_url: string; asin: string; status: string; capturedAt: string }[]
+  >([]);
+  const [offlineMemoText, setOfflineMemoText] = useState('');
+  const [amazonUrlInput, setAmazonUrlInput] = useState('');
+  const [syncBusy, setSyncBusy] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [suiteFilter, setSuiteFilter] = useState<'all' | AppSuite | 'waste'>('all');
   const [editingUrlId, setEditingUrlId] = useState<string | null>(null);
@@ -737,7 +745,44 @@ export default function HomeTab({
           () => {}
         );
     }
+    // 3. iPhone連携: クラウド上の修正/新規メモ & Amazon未読本キューを取得
+    fetch('/api/iphone/sync-notes')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.ok) {
+          if (Array.isArray(d.tasks) && d.tasks.length > 0) {
+            setTasks(d.tasks);
+            try { localStorage.setItem('agy_home_tasks_v7', JSON.stringify(d.tasks)); } catch {}
+          }
+          if (Array.isArray(d.ideas) && d.ideas.length > 0) {
+            setIdeas(d.ideas);
+            try { localStorage.setItem('agy_home_ideas_v7', JSON.stringify(d.ideas)); } catch {}
+          }
+        }
+      })
+      .catch(() => {});
+
+    fetch('/api/iphone/book-capture')
+      .then((r) => r.json())
+      .then((d) => {
+        if (d?.ok && Array.isArray(d.books)) {
+          setCapturedBooks(d.books);
+        }
+      })
+      .catch(() => {});
   }, []);
+
+  const persistNotesToCloud = (nextTasks: FixTaskItem[], nextIdeas: NewAppIdeaItem[]) => {
+    try {
+      localStorage.setItem('agy_home_tasks_v7', JSON.stringify(nextTasks));
+      localStorage.setItem('agy_home_ideas_v7', JSON.stringify(nextIdeas));
+    } catch {}
+    fetch('/api/iphone/sync-notes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ tasks: nextTasks, ideas: nextIdeas }),
+    }).catch(() => {});
+  };
 
   const recordAppClick = (appId: string) => {
     const nowStr = new Date().toLocaleString('ja-JP', {
@@ -1039,6 +1084,23 @@ export default function HomeTab({
         </div>
 
         <div className="flex items-center gap-2 text-[11px] font-bold" style={{ color: 'var(--text-muted)' }}>
+          <button
+            type="button"
+            onClick={() => setShowIphoneModal(true)}
+            className="px-2.5 py-1 rounded border font-black flex items-center gap-1.5 transition hover:opacity-85"
+            style={{
+              background: capturedBooks.length > 0 ? 'rgba(106, 174, 192, 0.2)' : 'var(--bg-card2)',
+              borderColor: 'var(--zelda-cyan)',
+              color: 'var(--zelda-cyan)',
+            }}
+          >
+            <span>📱 iPhone連携</span>
+            {capturedBooks.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px]" style={{ background: 'var(--zelda-gold)', color: '#1e1a16' }}>
+                📚{capturedBooks.length}
+              </span>
+            )}
+          </button>
           {metrics.length > 0 && metrics[metrics.length - 1].weight != null && (
             <span>⚖️ {metrics[metrics.length - 1].weight?.toFixed(1)}kg</span>
           )}
@@ -1047,6 +1109,257 @@ export default function HomeTab({
           )}
         </div>
       </div>
+
+      {/* iPhone 15 Pro 連携モーダル（Amazon本ワンタップ追加 ＆ オフラインメモ同期） */}
+      {showIphoneModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/65 p-4">
+          <div
+            className="w-full max-w-2xl max-h-[85vh] overflow-y-auto rounded-xl border-2 p-4 space-y-3 shadow-2xl"
+            style={{ background: 'var(--bg-card)', borderColor: 'var(--zelda-cyan)', color: 'var(--text)' }}
+          >
+            <div className="flex items-center justify-between border-b pb-2.5" style={{ borderColor: 'var(--border)' }}>
+              <div className="flex items-center gap-2">
+                <span className="text-base font-black">📱 iPhone 15 Pro 連携ハブ</span>
+                <div className="flex gap-1 ml-2">
+                  <button
+                    type="button"
+                    onClick={() => setIphoneTab('books')}
+                    className="px-2.5 py-1 rounded text-xs font-black border"
+                    style={{
+                      background: iphoneTab === 'books' ? 'var(--accent)' : 'var(--bg-card2)',
+                      borderColor: iphoneTab === 'books' ? 'var(--zelda-gold)' : 'var(--border)',
+                      color: iphoneTab === 'books' ? '#1e1a16' : 'var(--text)',
+                    }}
+                  >
+                    📚 Amazon本 → 未読リスト ({capturedBooks.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setIphoneTab('notes')}
+                    className="px-2.5 py-1 rounded text-xs font-black border"
+                    style={{
+                      background: iphoneTab === 'notes' ? 'var(--accent)' : 'var(--bg-card2)',
+                      borderColor: iphoneTab === 'notes' ? 'var(--zelda-gold)' : 'var(--border)',
+                      color: iphoneTab === 'notes' ? '#1e1a16' : 'var(--text)',
+                    }}
+                  >
+                    📝 オフラインメモ同期
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowIphoneModal(false)}
+                className="px-2.5 py-1 rounded border text-xs font-bold"
+                style={{ borderColor: 'var(--border)' }}
+              >
+                ✕ 閉じる
+              </button>
+            </div>
+
+            {iphoneTab === 'books' ? (
+              <div className="space-y-3">
+                {/* URLテスト・手動追加バー */}
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!amazonUrlInput.trim()) return;
+                    setSyncBusy(true);
+                    try {
+                      const res = await fetch('/api/iphone/book-capture', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ url: amazonUrlInput.trim() }),
+                      });
+                      const d = await res.json();
+                      if (d?.ok && d.book) {
+                        setCapturedBooks((prev) => [d.book, ...prev.filter((b) => b.id !== d.book.id)]);
+                        setAmazonUrlInput('');
+                        notify(`📚 「${d.book.title}」を未読リストへ追加しました`);
+                      }
+                    } finally {
+                      setSyncBusy(false);
+                    }
+                  }}
+                  className="flex gap-1.5"
+                >
+                  <input
+                    type="url"
+                    value={amazonUrlInput}
+                    onChange={(e) => setAmazonUrlInput(e.target.value)}
+                    placeholder="Amazon共有URL (https://amzn.asia/d/... または amazon.co.jp/dp/...)"
+                    className="flex-1 px-2.5 py-1.5 rounded border text-xs"
+                    style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
+                  />
+                  <button
+                    type="submit"
+                    disabled={syncBusy}
+                    className="px-3 py-1.5 rounded font-black text-xs"
+                    style={{ background: 'var(--accent)', color: '#1e1a16' }}
+                  >
+                    {syncBusy ? '取得中...' : '＋未読本へ追加'}
+                  </button>
+                </form>
+
+                {/* 取得済未読本リスト */}
+                {capturedBooks.length > 0 ? (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-black" style={{ color: 'var(--zelda-gold)' }}>
+                        iPhone / クラウド未読キュー ({capturedBooks.length}冊)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          let okCount = 0;
+                          for (const b of capturedBooks) {
+                            try {
+                              const r = await fetch('http://127.0.0.1:8788/api/books/quick-add', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  title: b.title,
+                                  author: b.author,
+                                  image_url: b.image_url,
+                                }),
+                              });
+                              if (r.ok) okCount++;
+                            } catch {}
+                          }
+                          if (okCount > 0) {
+                            notify(`✓ ${okCount}冊を Lifelog: Books (127.0.0.1:8788) の未読リストへ同期しました`);
+                          } else {
+                            notify('⚠️ Lifelogローカルサーバー(8788)が起動していません（Mac上で開くと同期できます）');
+                          }
+                        }}
+                        className="px-2.5 py-1 rounded border text-[11px] font-black"
+                        style={{ borderColor: 'var(--zelda-zonai)', color: 'var(--zelda-zonai)' }}
+                      >
+                        ⚡ Lifelog: Books へ一括転送
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {capturedBooks.map((b) => (
+                        <div
+                          key={b.id}
+                          className="p-2 rounded-lg border flex gap-2.5 items-start"
+                          style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
+                        >
+                          {b.image_url ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img src={b.image_url} alt={b.title} className="w-12 h-16 object-cover rounded border flex-shrink-0" />
+                          ) : (
+                            <div className="w-12 h-16 rounded border flex items-center justify-center text-lg flex-shrink-0">📖</div>
+                          )}
+                          <div className="flex-1 min-w-0 space-y-0.5">
+                            <div className="font-black text-xs line-clamp-2">{b.title}</div>
+                            <div className="text-[10px]" style={{ color: 'var(--text-muted)' }}>著者: {b.author}</div>
+                            <div className="flex items-center gap-2 pt-1">
+                              {b.amazon_url && (
+                                <a href={b.amazon_url} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold underline" style={{ color: 'var(--zelda-cyan)' }}>
+                                  Amazon ↗
+                                </a>
+                              )}
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  await fetch(`/api/iphone/book-capture?id=${encodeURIComponent(b.id)}`, { method: 'DELETE' });
+                                  setCapturedBooks((prev) => prev.filter((x) => x.id !== b.id));
+                                }}
+                                className="text-[10px] opacity-60 hover:opacity-100"
+                              >
+                                削除
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="p-3 rounded border text-xs text-center" style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)', color: 'var(--text-muted)' }}>
+                    まだiPhoneから追加された本はありません。Amazon URLを貼るか、下のショートカットで追加してください。
+                  </div>
+                )}
+
+                {/* iOS ショートカット設定ガイド */}
+                <div className="p-3 rounded-lg border space-y-1.5 text-[11px]" style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}>
+                  <div className="font-black" style={{ color: 'var(--zelda-cyan)' }}>
+                    📲 iPhone 15 Pro「共有シート」から1タップ追加するショートカット設定
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1" style={{ color: 'var(--text-sub)' }}>
+                    <li>iOS「ショートカット」アプリで新規作成 →「共有シートに表示」をON（入力：URL・テキスト）</li>
+                    <li>アクション <strong>「URLの内容を取得」</strong> を追加：URL = <code className="px-1 rounded bg-black/30">https://health-dashboard-dusky-xi.vercel.app/api/iphone/book-capture</code></li>
+                    <li>方法 = <strong>POST</strong> ／ 本文 = <strong>JSON</strong> ／ キー <code className="px-1 rounded bg-black/30">url</code> に「ショートカットの入力」を指定</li>
+                    <li>Amazonアプリで気になる本の「共有」→ 作成したショートカットをタップするだけで表紙・著者付きで自動登録！</li>
+                  </ol>
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <form
+                  onSubmit={async (e) => {
+                    e.preventDefault();
+                    if (!offlineMemoText.trim()) return;
+                    setSyncBusy(true);
+                    try {
+                      const res = await fetch('/api/iphone/sync-notes', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ text: offlineMemoText }),
+                      });
+                      const d = await res.json();
+                      if (d?.ok) {
+                        if (Array.isArray(d.tasks)) setTasks(d.tasks);
+                        if (Array.isArray(d.ideas)) setIdeas(d.ideas);
+                        setOfflineMemoText('');
+                        notify(`✓ 同期完了: 修正 +${d.addedFixesCount}件 / 新規案 +${d.addedIdeasCount}件`);
+                      }
+                    } finally {
+                      setSyncBusy(false);
+                    }
+                  }}
+                  className="space-y-2"
+                >
+                  <label className="block text-xs font-black" style={{ color: 'var(--zelda-gold)' }}>
+                    iPhoneのオフラインメモを貼り付けて一括同期（自動振り分け）:
+                  </label>
+                  <textarea
+                    rows={5}
+                    value={offlineMemoText}
+                    onChange={(e) => setOfflineMemoText(e.target.value)}
+                    placeholder={"例:\n修正: Tennis Score | 試合一覧のソート順を最新順にする\n新規: 睡眠トラッカー | 起床時刻と体温を自動記録\nMoney 家計簿: CSV取込ボタンを大きくする"}
+                    className="w-full p-2.5 rounded border text-xs font-normal"
+                    style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}
+                  />
+                  <div className="flex justify-end">
+                    <button
+                      type="submit"
+                      disabled={syncBusy}
+                      className="px-4 py-1.5 rounded font-black text-xs"
+                      style={{ background: 'var(--accent)', color: '#1e1a16' }}
+                    >
+                      {syncBusy ? '同期中...' : '⚡ 解析して既存修正／新規案へ同期'}
+                    </button>
+                  </div>
+                </form>
+
+                <div className="p-3 rounded-lg border space-y-1.5 text-[11px]" style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}>
+                  <div className="font-black" style={{ color: 'var(--zelda-cyan)' }}>
+                    📲 iPhone標準「メモ」アプリ（完全オフライン）と1タップ自動同期する方法
+                  </div>
+                  <ol className="list-decimal list-inside space-y-1" style={{ color: 'var(--text-sub)' }}>
+                    <li>オフライン時は普段通り iPhone標準「メモ」の固定メモ（例：<strong>Antigravityメモ</strong>）に1行1件でメモする</li>
+                    <li>iOSショートカットを作成：<strong>「メモを検索」</strong>（名前が Antigravityメモ）→ <strong>「URLの内容を取得」</strong></li>
+                    <li>URL = <code className="px-1 rounded bg-black/30">https://health-dashboard-dusky-xi.vercel.app/api/iphone/sync-notes</code> ／ 方法 = <strong>POST</strong> ／ 本文 JSONキー <code className="px-1 rounded bg-black/30">text</code> にメモ本文を指定</li>
+                    <li>時間がある時にショートカットを1タップするだけで、重複なしで「既存アプリ修正」と「新規アプリ案」へ自動振り分け同期！</li>
+                  </ol>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* MAIN 2-COLUMN COCKPIT: 左(カレンダー＋修正/新規案) / 右(コンパクト全24ページランチャー) */}
       <div className="grid grid-cols-1 xl:grid-cols-12 gap-3.5 items-start">
@@ -1466,7 +1779,7 @@ export default function HomeTab({
                 setTasks(next);
                 setTaskIn('');
                 setTaskDetailIn('');
-                localStorage.setItem('agy_home_tasks_v7', JSON.stringify(next));
+                persistNotesToCloud(next, ideas);
               }}
               className="flex flex-wrap gap-1.5"
             >
@@ -1539,7 +1852,7 @@ export default function HomeTab({
                         const next = tasks.filter((x) => x.id !== t.id);
                         setTasks(next);
                         if (isPinned) setPinnedFixId(null);
-                        localStorage.setItem('agy_home_tasks_v7', JSON.stringify(next));
+                        persistNotesToCloud(next, ideas);
                       }}
                       className="opacity-60 hover:opacity-100"
                     >
@@ -1599,7 +1912,7 @@ export default function HomeTab({
                                       : x
                                   );
                                   setTasks(next);
-                                  localStorage.setItem('agy_home_tasks_v7', JSON.stringify(next));
+                                  persistNotesToCloud(next, ideas);
                                 }}
                                 className="opacity-50 hover:opacity-100 text-[10px]"
                               >
@@ -1621,7 +1934,7 @@ export default function HomeTab({
                           );
                           setTasks(next);
                           setSubIdeaDrafts((prev) => ({ ...prev, [t.id]: '' }));
-                          localStorage.setItem('agy_home_tasks_v7', JSON.stringify(next));
+                          persistNotesToCloud(next, ideas);
                         }}
                         className="flex gap-1 pt-1"
                       >
@@ -1702,7 +2015,7 @@ export default function HomeTab({
                 setIdeas(next);
                 setIdeaIn('');
                 setIdeaDetailIn('');
-                localStorage.setItem('agy_home_ideas_v7', JSON.stringify(next));
+                persistNotesToCloud(tasks, next);
               }}
               className="flex flex-wrap gap-1.5"
             >
@@ -1763,7 +2076,7 @@ export default function HomeTab({
                         const next = ideas.filter((x) => x.id !== idea.id);
                         setIdeas(next);
                         if (isPinned) setPinnedIdeaId(null);
-                        localStorage.setItem('agy_home_ideas_v7', JSON.stringify(next));
+                        persistNotesToCloud(tasks, next);
                       }}
                       className="opacity-60 hover:opacity-100"
                     >
@@ -1823,7 +2136,7 @@ export default function HomeTab({
                                       : x
                                   );
                                   setIdeas(next);
-                                  localStorage.setItem('agy_home_ideas_v7', JSON.stringify(next));
+                                  persistNotesToCloud(tasks, next);
                                 }}
                                 className="opacity-50 hover:opacity-100 text-[10px]"
                               >
@@ -1845,7 +2158,7 @@ export default function HomeTab({
                           );
                           setIdeas(next);
                           setSubIdeaDrafts((prev) => ({ ...prev, [idea.id]: '' }));
-                          localStorage.setItem('agy_home_ideas_v7', JSON.stringify(next));
+                          persistNotesToCloud(tasks, next);
                         }}
                         className="flex gap-1 pt-1"
                       >
