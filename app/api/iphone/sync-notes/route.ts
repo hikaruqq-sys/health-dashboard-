@@ -141,6 +141,14 @@ export async function POST(req: NextRequest) {
       const body = await req.json();
       if (Array.isArray(body.tasks) && Array.isArray(body.ideas)) {
         fullBundle = { tasks: body.tasks, ideas: body.ideas };
+      } else if (body.appName && body.text) {
+        const appChoice = String(body.appName).trim();
+        const noteText = String(body.text).trim();
+        if (/新規|new/i.test(appChoice)) {
+          rawText = `新規: ${noteText}`;
+        } else {
+          rawText = `修正: ${appChoice} | ${noteText}`;
+        }
       } else {
         rawText = Array.isArray(body.notes) ? body.notes.join('\n') : String(body.text || body.memo || '');
       }
