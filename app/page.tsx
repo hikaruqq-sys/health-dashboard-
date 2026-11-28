@@ -15,6 +15,7 @@ import PodcastTab from '@/components/tabs/PodcastTab';
 import TargetTab from '@/components/tabs/TargetTab';
 import LibraryTab from '@/components/tabs/LibraryTab';
 import ValueInventoryTab from '@/components/tabs/ValueInventoryTab';
+import LifelogCloudTab from '@/components/tabs/LifelogCloudTab';
 import { useTheme } from '@/components/ThemeProvider';
 import { BodyMetric, DailyNutrition, MealEntry } from '@/types';
 import { supabase } from '@/lib/supabase';
@@ -27,7 +28,7 @@ const PERIOD_OPTIONS = [
 
 const TABS = [
   { id: 'home', label: 'ホーム', icon: '🏠' },
-  { id: 'value', label: '買い物・持ち物', icon: '🍎', href: 'http://127.0.0.1:8788/' },
+  { id: 'value', label: '買い物・持ち物', icon: '🍎' },
   { id: 'health', label: '健康', icon: '🏃' },
   { id: 'podcast', label: 'Podcast', icon: '🎙️' },
   { id: 'money', label: '資産管理', icon: '💰', href: 'https://money-dashboard-iota-three.vercel.app' },
@@ -253,7 +254,7 @@ export default function Dashboard() {
     ) : activeTab === 'podcast' ? (
       <PodcastTab />
     ) : activeTab === 'value' ? (
-      <ValueInventoryTab />
+      <LifelogCloudTab />
     ) : (
       <HealthTab
         metrics={metrics} nutrition={nutrition} latest={latest} prev={prev} trend={trend} isMock={isMock}
