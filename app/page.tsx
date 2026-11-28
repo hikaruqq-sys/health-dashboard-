@@ -11,6 +11,7 @@ import MealLog from '@/components/MealLog';
 import CSVUpload from '@/components/CSVUpload';
 import AIAdvicePanel from '@/components/AIAdvicePanel';
 import HomeTab from '@/components/tabs/HomeTab';
+import PodcastTab from '@/components/tabs/PodcastTab';
 import TargetTab from '@/components/tabs/TargetTab';
 import LibraryTab from '@/components/tabs/LibraryTab';
 import ValueInventoryTab from '@/components/tabs/ValueInventoryTab';
@@ -28,6 +29,7 @@ const TABS = [
   { id: 'home', label: 'ホーム', icon: '🏠' },
   { id: 'value', label: '買い物・持ち物', icon: '🍎', href: 'http://127.0.0.1:8788/' },
   { id: 'health', label: '健康', icon: '🏃' },
+  { id: 'podcast', label: 'Podcast', icon: '🎙️' },
   { id: 'money', label: '資産管理', icon: '💰', href: 'https://money-dashboard-iota-three.vercel.app' },
 ] as const;
 type Tab = typeof TABS[number]['id'];
@@ -248,6 +250,8 @@ export default function Dashboard() {
       <div className="flex items-center justify-center h-48" style={{ color: 'var(--text-muted)' }}>読み込み中...</div>
     ) : activeTab === 'home' ? (
       <HomeTab metrics={metrics} nutrition={nutrition} onNavigate={(t) => setActiveTab(t as Tab)} />
+    ) : activeTab === 'podcast' ? (
+      <PodcastTab />
     ) : activeTab === 'value' ? (
       <ValueInventoryTab />
     ) : (
