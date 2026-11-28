@@ -18,8 +18,17 @@ interface PodcastEpisode {
   alignmentScript?: string;
   recordingGuide?: string;
   ytViews?: number;
+  ytVideoId?: string;
   spotifyPlays?: number;
   updatedAt: string;
+}
+
+function normTitleKey(t: string): string {
+  return (t || '')
+    .normalize('NFC')
+    .toLowerCase()
+    .replace(/[\s　・!！?？:：\-―—.,、。「」『』()（）\[\]【】]+/g, '')
+    .trim();
 }
 
 const PODCAST_KV_KEY = 'agy_podcast_ops_v2';
@@ -133,6 +142,7 @@ function normalizeEpisode(raw: Record<string, unknown>, idx: number): PodcastEpi
     sourceMemo: String(raw.sourceMemo || ''),
     script: String(raw.script || combinedLegacy || ''),
     ytViews: Number(raw.ytViews || 0),
+    ytVideoId: raw.ytVideoId ? String(raw.ytVideoId) : undefined,
     spotifyPlays: Number(raw.spotifyPlays || 0),
     updatedAt: String(raw.updatedAt || new Date().toISOString()),
   };
@@ -164,8 +174,73 @@ export default function PodcastTab() {
   const [episodes, setEpisodes] = useState<PodcastEpisode[]>(INITIAL_EPISODES);
   const [selectedId, setSelectedId] = useState<string>(INITIAL_EPISODES[0].id);
   const [searchQuery, setSearchQuery] = useState('');
+  const [ytSyncing, setYtSyncing] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const csvInputRef = useRef<HTMLInputElement | null>(null);
+
+  const handleYouTubeSync = async () => {
+    setYtSyncing(true);
+    try {
+      const res = await fetch('/api/podcast/youtube-sync');
+      const d = await res.json();
+      if (!d?.ok || !Array.isArray(d.videos)) {
+        notify(`⚠️ YouTube同期失敗: ${d?.error || '取得エラー'}`);
+        return;
+      }
+      const ytMap = new Map<string, { videoId: string; title: string; views: number }>();
+      for (const v of d.videos) {
+        ytMap.set(v.normalizedTitle, v);
+      }
+
+      let matchedCount = 0;
+      const seenKeys = new Set<string>();
+      const updated = episodes.map((ep) => {
+        const key = normTitleKey(ep.title);
+        seenKeys.add(key);
+        const hit = ytMap.get(key);
+        if (hit) {
+          matchedCount++;
+          return {
+            ...ep,
+            ytViews: hit.views,
+            ytVideoId: hit.videoId,
+            status: 'PUBLISHED' as EpStatus,
+            updatedAt: new Date().toISOString(),
+          };
+        }
+        return ep;
+      });
+
+      // Add any channel videos not yet in our list
+      let maxNo = updated.reduce((m, e) => Math.max(m, e.epNo), 0);
+      const added: PodcastEpisode[] = [];
+      for (const v of d.videos) {
+        if (!seenKeys.has(v.normalizedTitle)) {
+          maxNo++;
+          added.push({
+            id: `ep_yt_${v.videoId}`,
+            epNo: maxNo,
+            title: v.title,
+            publishDate: '',
+            status: 'PUBLISHED',
+            sourceMemo: '',
+            script: '',
+            ytViews: v.views,
+            ytVideoId: v.videoId,
+            spotifyPlays: 0,
+            updatedAt: new Date().toISOString(),
+          });
+        }
+      }
+
+      persist([...updated, ...added]);
+      notify(`▶️ YouTube同期完了！既存 ${matchedCount}本更新 / 新規 ${added.length}本追加 (合計 ${d.totalViews}再生)`);
+    } catch {
+      notify('⚠️ YouTube同期中に通信エラーが発生しました');
+    } finally {
+      setYtSyncing(false);
+    }
+  };
 
   const notify = (msg: string) => {
     setToast(msg);
@@ -342,6 +417,15 @@ export default function PodcastTab() {
           </button>
           <button
             type="button"
+            onClick={handleYouTubeSync}
+            disabled={ytSyncing}
+            className="px-2.5 py-1.5 rounded-lg border font-black text-xs"
+            style={{ borderColor: '#f87171', color: '#f87171', background: 'rgba(248,113,113,0.12)' }}
+          >
+            {ytSyncing ? '⏳ 同期中...' : '▶️ YouTube再生数を自動同期'}
+          </button>
+          <button
+            type="button"
             onClick={() => csvInputRef.current?.click()}
             className="px-2.5 py-1.5 rounded-lg border font-bold text-xs"
             style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)' }}
@@ -349,13 +433,13 @@ export default function PodcastTab() {
             📥 思考CSV取込
           </button>
           <a
-            href="https://studio.youtube.com/"
+            href="https://www.youtube.com/channel/UCguJv1epyMcAQAaKhz5Lo2A/videos"
             target="_blank"
             rel="noopener noreferrer"
             className="px-2 py-1.5 rounded-lg border text-[11px]"
             style={{ borderColor: 'var(--border)', color: 'var(--text-sub)' }}
           >
-            YouTube Studio ↗
+            YouTube ↗
           </a>
           <a
             href="https://creators.spotify.com/"
@@ -411,6 +495,11 @@ export default function PodcastTab() {
                       >
                         {STATUS_META[ep.status].label}
                       </span>
+                      {(ep.ytViews ?? 0) > 0 && (
+                        <span className="font-bold" style={{ color: '#f87171' }}>
+                          ▶️ {ep.ytViews}回
+                        </span>
+                      )}
                     </div>
                   </div>
                 </button>
@@ -459,6 +548,17 @@ export default function PodcastTab() {
                         <option key={k} value={k}>{STATUS_META[k].label}</option>
                       ))}
                     </select>
+                    {selectedEp.ytVideoId && (
+                      <a
+                        href={`https://www.youtube.com/watch?v=${selectedEp.ytVideoId}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="px-2 py-1 rounded border text-[11px] font-bold"
+                        style={{ borderColor: '#f87171', color: '#f87171' }}
+                      >
+                        ▶️ {selectedEp.ytViews || 0}回 (動画 ↗)
+                      </a>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-1.5">
