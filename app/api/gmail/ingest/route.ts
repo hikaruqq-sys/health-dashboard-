@@ -59,20 +59,55 @@ function parseRakutenIrEmail(subject: string, body: string): HubCalendarTask[] {
 
 function parseShoppingEmail(subject: string, from: string, body: string): EmailPurchaseItem | null {
   const text = `${subject}\n${body}`;
-  // Store detection
-  let store = 'ネット購入';
-  if (/amazon/i.test(from) || /amazon/i.test(subject)) store = 'Amazon';
-  else if (/mercari|メルカリ/i.test(from) || /メルカリ/i.test(subject)) store = 'メルカリ';
-  else if (/jal/i.test(from) || /JALショッピング/i.test(subject)) store = 'JALショッピング';
-  else if (/rakuten|楽天/i.test(from) || /楽天/i.test(subject)) store = '楽天市場';
-  else {
-    const bracketMatch = subject.match(/【([^】]+)】/);
-    if (bracketMatch) store = bracketMatch[1].slice(0, 20);
+  const fromLower = from.toLowerCase();
+  const subjLower = subject.toLowerCase();
+
+  // Store detection (wide EC coverage + From display-name fallback)
+  let store = '';
+  const knownStores: [RegExp, string][] = [
+    [/amazon/i, 'Amazon'],
+    [/mercari|メルカリ/i, 'メルカリ'],
+    [/rakuten|楽天/i, '楽天市場'],
+    [/yahoo|paypayモール|ヤフー/i, 'Yahoo!ショッピング'],
+    [/zozo/i, 'ZOZOTOWN'],
+    [/yodobashi|ヨドバシ/i, 'ヨドバシ.com'],
+    [/biccamera|ビックカメラ/i, 'ビックカメラ'],
+    [/uniqlo|ユニクロ/i, 'ユニクロ'],
+    [/muji|無印良品/i, '無印良品'],
+    [/apple\.com|apple store/i, 'Apple'],
+    [/nike/i, 'Nike'],
+    [/iherb/i, 'iHerb'],
+    [/valuebooks|バリューブックス/i, 'バリューブックス'],
+    [/kinokuniya|紀伊國屋/i, '紀伊國屋書店'],
+    [/jal|JALショッピング/i, 'JALショッピング'],
+    [/qoo10/i, 'Qoo10'],
+    [/base\.in|thebase/i, 'BASE'],
+    [/stores\.jp/i, 'STORES'],
+    [/shopify/i, 'Shopify'],
+  ];
+  for (const [re, label] of knownStores) {
+    if (re.test(fromLower) || re.test(subjLower)) {
+      store = label;
+      break;
+    }
+  }
+  if (!store) {
+    // Extract sender display name: `"ユニクロオンラインストア" <order@uniqlo.com>` -> `ユニクロオンラインストア`
+    const fromName = from.replace(/<[^>]+>/g, '').replace(/^["'\s]+|["'\s]+$/g, '').trim();
+    const bracketMatch = subject.match(/[【\[]([^】\]]+)[】\]]/);
+    if (fromName && !/@/.test(fromName) && fromName.length <= 28) {
+      store = fromName;
+    } else if (bracketMatch) {
+      store = bracketMatch[1].slice(0, 24);
+    } else {
+      const domainMatch = from.match(/@([a-z0-9.-]+)/i);
+      store = domainMatch ? domainMatch[1].split('.').slice(-2, -1)[0] || 'ネット購入' : 'ネット購入';
+    }
   }
 
-  // Date detection: 2026年11月25日 or 2026/11/25
+  // Date detection: 2026年11月25日 or 2026/11/25 or 2026-11-25
   let dateStr = new Date().toISOString().slice(0, 10);
-  const jpDate = text.match(/(\d{4})年(\d{1,2})月(\d{1,2})日/);
+  const jpDate = text.match(/(\d{4})年\s*(\d{1,2})月\s*(\d{1,2})日/);
   const slashDate = text.match(/(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})/);
   if (jpDate) {
     dateStr = `${jpDate[1]}-${jpDate[2].padStart(2, '0')}-${jpDate[3].padStart(2, '0')}`;
@@ -80,20 +115,45 @@ function parseShoppingEmail(subject: string, from: string, body: string): EmailP
     dateStr = `${slashDate[1]}-${slashDate[2].padStart(2, '0')}-${slashDate[3].padStart(2, '0')}`;
   }
 
-  // Item name detection
+  // Item name detection across Amazon / Mercari / Rakuten / generic EC formats
   let itemName = '';
-  const numberedItem = body.match(/(?:^|\n)\s*1[\.．]\s*([^\n\r]+)/);
-  const productLine = body.match(/(?:商品名|商品)\s*[:：]\s*([^\n\r]+)/);
-  if (numberedItem) itemName = numberedItem[1].trim();
-  else if (productLine) itemName = productLine[1].trim();
-  else itemName = subject.replace(/【[^】]+】/g, '').replace(/ご注文ありがとう.*/g, '').trim() || `${store}購入品`;
+  const patterns = [
+    /(?:^|\n)\s*1[\.．]\s*([^\n\r]+)/,
+    /(?:商品名|ご注文商品|購入商品|商品内容|アイテム名|Item)\s*[:：]\s*([^\n\r]+)/i,
+    /(?:^|\n)\s*・\s*([^\n\r]{4,80})(?:\s*[×xX]\s*\d+|\s*[¥￥]\s*[0-9,]+)/,
+    /「([^」\n]{3,70})」/,
+  ];
+  for (const re of patterns) {
+    const m = body.match(re);
+    if (m && m[1]?.trim()) {
+      itemName = m[1].trim();
+      break;
+    }
+  }
+  if (!itemName) {
+    itemName =
+      subject
+        .replace(/[【\[][^】\]]+[】\]]/g, '')
+        .replace(/ご注文ありがとう.*|ご注文確認.*|注文内容ご確認.*|ご購入ありがとう.*|購入が完了.*/g, '')
+        .trim() || `${store}購入品`;
+  }
 
-  // Price detection
-  const totalMatch = body.match(/(?:商品金額合計|小計|価格|合計金額|合計)\s*[:：]\s*[¥￥]?\s*([0-9,]+)\s*円?/);
-  const netMatch = body.match(/(?:注文金額合計|お支払い合計|請求金額|決済金額)\s*[:：]\s*[¥￥]?\s*([0-9,]+)\s*円?/);
-  const pointMatch = body.match(/(?:ポイント使用|ポイント利用)[^\d]*([0-9,]+)/);
+  // Price detection (handles ¥1,280 / ￥1,280 / 1,280円 / Total: ¥1,280)
+  const totalMatch = body.match(
+    /(?:商品金額合計|商品合計|商品代金|小計|価格|合計金額|合計|Subtotal|Total)\s*[:：]?\s*[¥￥]?\s*([0-9,]{2,})\s*円?/i
+  );
+  const netMatch = body.match(
+    /(?:注文金額合計|注文合計|お支払い合計|お支払合計|お支払い金額|支払金額|請求金額|決済金額|総合計|Grand Total|Order Total)\s*[:：]?\s*[¥￥]?\s*([0-9,]{2,})\s*円?/i
+  );
+  const anyYenMatch = body.match(/[¥￥]\s*([0-9,]{2,})|([0-9,]{3,})\s*円/);
+  const pointMatch = body.match(/(?:ポイント使用|ポイント利用|クーポン[^\n]*値引き)[^\d]*([0-9,]+)/);
 
-  const amount = totalMatch ? Number(totalMatch[1].replace(/,/g, '')) : netMatch ? Number(netMatch[1].replace(/,/g, '')) : 0;
+  const fallbackYen = anyYenMatch ? Number((anyYenMatch[1] || anyYenMatch[2] || '0').replace(/,/g, '')) : 0;
+  const amount = totalMatch
+    ? Number(totalMatch[1].replace(/,/g, ''))
+    : netMatch
+      ? Number(netMatch[1].replace(/,/g, ''))
+      : fallbackYen;
   const netAmount = netMatch ? Number(netMatch[1].replace(/,/g, '')) : amount;
   const pointsUsed = pointMatch ? Number(pointMatch[1].replace(/,/g, '')) : 0;
 

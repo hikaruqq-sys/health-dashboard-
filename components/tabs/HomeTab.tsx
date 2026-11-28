@@ -77,16 +77,29 @@ const TELEMETRY_KEY = 'agy_page_telemetry_v1';
 const CALENDAR_KV_KEY = 'agy_hub_calendar_v1';
 const GAS_SCRIPT_SNIPPET = `function syncGmailToLifeHub() {
   const API = "https://health-dashboard-dusky-xi.vercel.app/api/gmail/ingest?key=0a0b42d75ffabbd9acd1e5fa2fe80df0";
+  const LABEL_NAME = "LifeHub同期済";
+  const label = GmailApp.getUserLabelByName(LABEL_NAME) || GmailApp.createLabel(LABEL_NAME);
+
   const queries = [
-    { q: 'from:service@rakuten-sec.co.jp subject:"決算発表予定日" newer_than:7d', mode: "ir" },
-    { q: '(from:amazon.co.jp OR from:mercari OR subject:"ご注文ありがとうございます") newer_than:7d', mode: "purchase" }
+    // ① 楽天証券 決算発表予定日メール
+    {
+      q: 'from:service@rakuten-sec.co.jp subject:"決算発表予定日" newer_than:14d -label:' + LABEL_NAME,
+      mode: "ir"
+    },
+    // ② ネット購入メール全般（Amazon / メルカリ / 楽天 / Yahoo / ZOZOTOWN / ヨドバシ / ユニクロ / 無印 / Apple / iHerb / JAL / 汎用EC）
+    {
+      q: '(from:amazon.co.jp OR from:mercari OR from:rakuten.co.jp OR from:yahoo.co.jp OR from:zozo.jp OR from:yodobashi.com OR from:biccamera.com OR from:uniqlo.com OR from:muji.com OR from:apple.com OR from:nike.com OR from:iherb.com OR from:jal.co.jp OR subject:("ご注文ありがとう" OR "ご注文確認" OR "ご注文の確認" OR "注文内容ご確認" OR "ご購入ありがとう" OR "購入が完了" OR "お買い上げありがとう" OR "領収書" OR "Order Confirmation" OR "Thank you for your order")) -category:promotions -subject:(メルマガ OR ニュースレター OR クーポン OR ポイント失効 OR 発送のお知らせ) newer_than:7d -label:' + LABEL_NAME,
+      mode: "purchase"
+    }
   ];
+
   queries.forEach(({ q, mode }) => {
-    GmailApp.search(q, 0, 10).forEach(thread => {
+    GmailApp.search(q, 0, 20).forEach(thread => {
       const msg = thread.getMessages().pop();
-      UrlFetchApp.fetch(API, {
+      const res = UrlFetchApp.fetch(API, {
         method: "post",
         contentType: "application/json",
+        muteHttpExceptions: true,
         payload: JSON.stringify({
           mode,
           subject: msg.getSubject(),
@@ -94,6 +107,9 @@ const GAS_SCRIPT_SNIPPET = `function syncGmailToLifeHub() {
           body: msg.getPlainBody()
         })
       });
+      if (res.getResponseCode() >= 200 && res.getResponseCode() < 300) {
+        thread.addLabel(label);
+      }
     });
   });
 }`;
