@@ -69,6 +69,7 @@ interface EmailPurchaseItem {
   amount: number;
   pointsUsed?: number;
   netAmount?: number;
+  isBook?: boolean;
 }
 
 const TODAY_ISO = new Date().toISOString().slice(0, 10);
@@ -1371,14 +1372,114 @@ export default function HomeTab({
             </form>
 
             {emailPurchases.length > 0 && (
-              <div className="space-y-1.5 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
-                <div className="text-xs font-black" style={{ color: 'var(--zelda-cyan)' }}>🛒 Gmailから抽出したネット購入明細 ({emailPurchases.length}件)</div>
-                {emailPurchases.slice(0, 8).map((p) => (
-                  <div key={p.id} className="p-2 rounded border flex justify-between items-center text-[11px]" style={{ background: 'var(--bg-card2)', borderColor: 'var(--border)' }}>
-                    <span>{p.date} · <strong>{p.store}</strong> · {p.itemName}</span>
-                    <span className="font-black" style={{ color: 'var(--zelda-gold)' }}>¥{(p.netAmount ?? p.amount).toLocaleString()}</span>
-                  </div>
-                ))}
+              <div className="space-y-2 pt-2 border-t" style={{ borderColor: 'var(--border)' }}>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-black" style={{ color: 'var(--zelda-cyan)' }}>
+                    🛒 承認待ちキュー ({emailPurchases.length}件) — 確認してから蓄積先を選択
+                  </span>
+                </div>
+                {emailPurchases.map((p) => {
+                  const dismissQueueItem = async (id: string) => {
+                    try {
+                      await fetch(`/api/gmail/ingest?id=${encodeURIComponent(id)}`, { method: 'DELETE' });
+                    } catch {}
+                    setEmailPurchases((prev) => prev.filter((x) => x.id !== id));
+                  };
+                  return (
+                    <div
+                      key={p.id}
+                      className="p-2.5 rounded border space-y-1.5 text-[11px]"
+                      style={{
+                        background: 'var(--bg-card2)',
+                        borderColor: p.isBook ? 'var(--zelda-cyan)' : 'var(--border)',
+                      }}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="min-w-0">
+                          <span className="font-mono text-[10px] mr-1.5" style={{ color: 'var(--text-muted)' }}>{p.date}</span>
+                          <strong className="mr-1.5">{p.store}</strong>
+                          {p.isBook && (
+                            <span className="px-1.5 py-0.5 rounded text-[9.5px] font-black mr-1.5" style={{ background: 'rgba(106,174,192,0.2)', color: 'var(--zelda-cyan)' }}>
+                              📚 本候補
+                            </span>
+                          )}
+                          <span className="font-bold">{p.itemName}</span>
+                        </div>
+                        <span className="font-black whitespace-nowrap" style={{ color: 'var(--zelda-gold)' }}>
+                          ¥{(p.netAmount ?? p.amount).toLocaleString()}
+                        </span>
+                      </div>
+                      <div className="flex flex-wrap items-center justify-end gap-1.5 pt-1">
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const safeName = p.itemName.replace(/,/g, ' ');
+                              const safeStore = p.store.replace(/,/g, ' ');
+                              const csv = `購入日,店名,商品名,金額\n${p.date},${safeStore},${safeName},${p.netAmount ?? p.amount}`;
+                              const res = await fetch('http://127.0.0.1:8788/api/import-csv', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ csv_text: csv }),
+                              });
+                              if (!res.ok) throw new Error('Lifelog server error');
+                              await dismissQueueItem(p.id);
+                              notify(`🍎 「${p.itemName.slice(0, 20)}」を買い物詳細へ承認・蓄積しました！`);
+                            } catch {
+                              notify('⚠️ Lifelogローカル(8788)が起動中か確認してください');
+                            }
+                          }}
+                          className="px-2.5 py-1 rounded border font-black text-[10.5px]"
+                          style={{ borderColor: 'var(--zelda-gold)', color: 'var(--zelda-gold)', background: 'rgba(217,168,78,0.12)' }}
+                        >
+                          🍎 買い物詳細へ承認
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            try {
+                              const res = await fetch('http://127.0.0.1:8788/api/books/quick-add', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                  title: p.itemName,
+                                  author: p.store,
+                                  price: p.netAmount ?? p.amount,
+                                  reading_status: 'FINISHED',
+                                  acquired_date: p.date,
+                                }),
+                              });
+                              if (!res.ok) throw new Error('Lifelog server error');
+                              await dismissQueueItem(p.id);
+                              notify(`📖 「${p.itemName.slice(0, 20)}」を読んだ本として読書図鑑へ登録しました！`);
+                            } catch {
+                              notify('⚠️ Lifelogローカル(8788)が起動中か確認してください');
+                            }
+                          }}
+                          className="px-2.5 py-1 rounded border font-black text-[10.5px]"
+                          style={{
+                            borderColor: 'var(--zelda-cyan)',
+                            color: p.isBook ? '#1e1a16' : 'var(--zelda-cyan)',
+                            background: p.isBook ? 'var(--zelda-cyan)' : 'rgba(106,174,192,0.14)',
+                          }}
+                        >
+                          📖 読んだ本として読書図鑑へ登録
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            await dismissQueueItem(p.id);
+                            notify('🗑 キューから却下しました');
+                          }}
+                          className="px-2 py-1 rounded border text-[10.5px]"
+                          style={{ borderColor: 'var(--f1-soft)', color: 'var(--f1-soft)' }}
+                        >
+                          🗑 却下
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
 

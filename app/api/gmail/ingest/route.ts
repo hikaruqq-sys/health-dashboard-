@@ -25,6 +25,7 @@ export interface EmailPurchaseItem {
   amount: number;
   pointsUsed?: number;
   netAmount?: number;
+  isBook?: boolean;
   syncedToLifelog: boolean;
   capturedAt: string;
 }
@@ -98,6 +99,10 @@ function parseShoppingEmail(subject: string, from: string, body: string): EmailP
 
   if (!itemName && amount === 0) return null;
 
+  const isBook = /文庫|新書|単行本|書籍|教本|入門|ガイドブック|kindle|小説|コミック|漫画|マンガ|出版|ビジネス書|技術書|全巻|ハードカバー|ペーパーバック|絵本|事典|辞典/i.test(
+    `${itemName} ${subject} ${body.slice(0, 600)}`
+  );
+
   return {
     id: `mail_buy_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
     date: dateStr,
@@ -106,6 +111,7 @@ function parseShoppingEmail(subject: string, from: string, body: string): EmailP
     amount,
     pointsUsed,
     netAmount,
+    isBook,
     syncedToLifelog: false,
     capturedAt: new Date().toISOString(),
   };
@@ -185,6 +191,32 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ ok: true, type: 'purchase', item: purchase, purchases: next });
+  } catch (e) {
+    return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
+  }
+}
+
+export async function DELETE(req: NextRequest) {
+  try {
+    if (!supabase) return NextResponse.json({ ok: false, error: 'Supabase not configured' }, { status: 500 });
+    const id = req.nextUrl.searchParams.get('id');
+    if (!id) return NextResponse.json({ ok: false, error: 'id is required' }, { status: 400 });
+
+    const { data } = await supabase
+      .from('lifeplan_kv')
+      .select('data')
+      .eq('key', PURCHASES_KEY)
+      .maybeSingle();
+    const existing: EmailPurchaseItem[] = Array.isArray(data?.data) ? (data.data as EmailPurchaseItem[]) : [];
+    const next = existing.filter((p) => p.id !== id);
+
+    await supabase.from('lifeplan_kv').upsert({
+      key: PURCHASES_KEY,
+      data: next,
+      updated_at: new Date().toISOString(),
+    });
+
+    return NextResponse.json({ ok: true, purchases: next });
   } catch (e) {
     return NextResponse.json({ ok: false, error: String(e) }, { status: 500 });
   }
