@@ -24,8 +24,12 @@ export function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  // 2. ウィジェット・食事同期用APIはシークレットキーで認証通過可能
-  if (pathname === "/api/widget" || pathname === "/api/meals/sync") {
+  // 2. ウィジェット・食事同期・iPhone連携APIはシークレットキーで認証通過可能
+  if (
+    pathname === "/api/widget" ||
+    pathname === "/api/meals/sync" ||
+    pathname.startsWith("/api/iphone/")
+  ) {
     const key = req.nextUrl.searchParams.get("key") || req.headers.get("x-api-key");
     const authHeader = req.headers.get("authorization");
     const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;

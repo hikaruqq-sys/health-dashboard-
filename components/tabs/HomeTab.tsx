@@ -1289,7 +1289,7 @@ export default function HomeTab({
                   </div>
                   <ol className="list-decimal list-inside space-y-1" style={{ color: 'var(--text-sub)' }}>
                     <li>iOS「ショートカット」アプリで新規作成 →「共有シートに表示」をON（入力：URL・テキスト）</li>
-                    <li>アクション <strong>「URLの内容を取得」</strong> を追加：URL = <code className="px-1 rounded bg-black/30">https://health-dashboard-dusky-xi.vercel.app/api/iphone/book-capture</code></li>
+                    <li>アクション <strong>「URLの内容を取得」</strong> を追加：URL = <code className="px-1 rounded bg-black/30">https://health-dashboard-dusky-xi.vercel.app/api/iphone/book-capture?key=0a0b42d75ffabbd9acd1e5fa2fe80df0</code></li>
                     <li>方法 = <strong>POST</strong> ／ 本文 = <strong>JSON</strong> ／ キー <code className="px-1 rounded bg-black/30">url</code> に「ショートカットの入力」を指定</li>
                     <li>Amazonアプリで気になる本の「共有」→ 作成したショートカットをタップするだけで表紙・著者付きで自動登録！</li>
                   </ol>
@@ -1351,7 +1351,7 @@ export default function HomeTab({
                   <ol className="list-decimal list-inside space-y-1" style={{ color: 'var(--text-sub)' }}>
                     <li>オフライン時は普段通り iPhone標準「メモ」の固定メモ（例：<strong>Antigravityメモ</strong>）に1行1件でメモする</li>
                     <li>iOSショートカットを作成：<strong>「メモを検索」</strong>（名前が Antigravityメモ）→ <strong>「URLの内容を取得」</strong></li>
-                    <li>URL = <code className="px-1 rounded bg-black/30">https://health-dashboard-dusky-xi.vercel.app/api/iphone/sync-notes</code> ／ 方法 = <strong>POST</strong> ／ 本文 JSONキー <code className="px-1 rounded bg-black/30">text</code> にメモ本文を指定</li>
+                    <li>URL = <code className="px-1 rounded bg-black/30">https://health-dashboard-dusky-xi.vercel.app/api/iphone/sync-notes?key=0a0b42d75ffabbd9acd1e5fa2fe80df0</code> ／ 方法 = <strong>POST</strong> ／ 本文 JSONキー <code className="px-1 rounded bg-black/30">text</code> にメモ本文を指定</li>
                     <li>時間がある時にショートカットを1タップするだけで、重複なしで「既存アプリ修正」と「新規アプリ案」へ自動振り分け同期！</li>
                   </ol>
                 </div>
