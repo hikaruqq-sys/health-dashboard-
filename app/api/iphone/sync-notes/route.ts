@@ -139,10 +139,11 @@ export async function POST(req: NextRequest) {
 
     if (contentType.includes('application/json')) {
       const body = await req.json();
+      const appNameInput = body.appName || body['app name'] || body.app_name;
       if (Array.isArray(body.tasks) && Array.isArray(body.ideas)) {
         fullBundle = { tasks: body.tasks, ideas: body.ideas };
-      } else if (body.appName && body.text) {
-        const appChoice = String(body.appName).trim();
+      } else if (appNameInput && body.text) {
+        const appChoice = String(appNameInput).trim();
         const noteText = String(body.text).trim();
         if (/新規|new/i.test(appChoice)) {
           rawText = `新規: ${noteText}`;
